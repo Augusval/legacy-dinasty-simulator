@@ -118,7 +118,7 @@ def llamar_llm(mensajes: List[Dict[str, str]], dias_avanzados: int, contexto_ext
     for intento in range(1, max_reintentos + 1):
         try:
             completion = client.chat.completions.create(
-                model="llama-3.1-70b-versatile",
+                model="openai/gpt-oss-20b",
                 messages=mensajes,
                 temperature=0.7,
                 max_tokens=800,
