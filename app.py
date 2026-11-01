@@ -1,4 +1,5 @@
 import random
+import logging
 import streamlit as st
 import prompts
 import mechanics
@@ -10,10 +11,11 @@ from entidades import Empresa, Hijo, Ministro, Medio, Rival
 # CONFIGURACIÓN INICIAL
 # ==============================================================================
 
-st.set_page_config(page_title="LEGACY v1.1", layout="wide", page_icon="📰")
+logger = logging.getLogger(__name__)
+
+st.set_page_config(page_title="LEGACY v1.2", layout="wide", page_icon="📰")
 ui.inyectar_css()
 
-# Inicialización de Session State
 if "juego_iniciado" not in st.session_state:
     st.session_state.juego_iniciado = False
 if "mensajes" not in st.session_state:
@@ -21,23 +23,21 @@ if "mensajes" not in st.session_state:
 if "tutorial_visto" not in st.session_state:
     st.session_state.tutorial_visto = False
 
-st.title("LEGACY - Crónicas Dinásticas v1.1")
+st.title("LEGACY - Crónicas Dinásticas v1.2")
 
 # ==============================================================================
-# PANTALLA DE INICIO (CREACIÓN DE PERSONAJE)
+# PANTALLA DE INICIO
 # ==============================================================================
 
 if not st.session_state.juego_iniciado:
     st.markdown("## El Comienzo de una Dinastía")
     
-    # Salón de la Fama
     hof = leer_hall_of_fame()
     if hof:
         with st.expander("🏛️ Salón de la Fama Dinástico"):
             for i, entry in enumerate(hof[:5], 1):
                 st.markdown(f"{i}. **{entry['apellido']}** | {entry['cargo']} | {entry['puntos']:,} pts")
 
-    # Generar nombres aleatorios UNA SOLA VEZ (Fix del bug de reseteo)
     if "nombre_inicial" not in st.session_state:
         APELLIDOS_ARGENTINOS = ["González", "Rodríguez", "Gómez", "Fernández", "López", "Martínez", "Sánchez", "Pérez"]
         st.session_state.nombre_inicial = random.choice(NOMBRES_PILA)
@@ -63,11 +63,9 @@ if not st.session_state.juego_iniciado:
         )
 
         if st.form_submit_button("Comenzar Dinastía", type="primary", use_container_width=True):
-            # Limpiar nombres para la próxima vez
             del st.session_state.nombre_inicial
             del st.session_state.apellido_inicial
             
-            # 1. Crear estado inicial usando la nueva función refactorizada
             estado = inicializar_estado(nombre, apellido, edad, genero, origen, ideologia, rasgo)
             estado["objetivos_dinasticos"] = objetivos
             
@@ -76,7 +74,6 @@ if not st.session_state.juego_iniciado:
             st.session_state.game_over = None
             st.session_state.hof_guardado = False
             
-            # 2. Generar narrativa inicial con la IA
             system_prompt = prompts.construir_sistema(nombre, edad, "Soy un ciudadano.", rasgo, origen, ideologia)
             mensajes_iniciales = [
                 {"role": "system", "content": system_prompt},
@@ -91,8 +88,7 @@ if not st.session_state.juego_iniciado:
                 st.session_state.estado["titular_periodico"] = f"Comienza la era de la Dinastía {apellido}."
                 
             st.rerun()
-
-    st.stop() # Detener la ejecución aquí si no hay juego iniciado
+    st.stop()
 
 # ==============================================================================
 # PANTALLA DE JUEGO (BUCLE PRINCIPAL)
@@ -100,17 +96,14 @@ if not st.session_state.juego_iniciado:
 else:
     estado = st.session_state.estado
 
-    # --- GAME OVER ---
     if st.session_state.get("game_over"):
         st.error(st.session_state.game_over)
         st.subheader("⚰️ El Fin de una Era")
         
-        # Calcular legado (Importado de state.py)
-        from state import calcular_legado, generar_biografia, continuar_dinastia
+        from state import calcular_legado, generar_biografia, continuar_dinastia, guardar_hall_of_fame
         puntos, rango = calcular_legado(estado)
         
         if not st.session_state.get("hof_guardado", False):
-            from state import guardar_hall_of_fame
             guardar_hall_of_fame(puntos, rango, estado)
             st.session_state.hof_guardado = True
             
@@ -136,28 +129,23 @@ else:
                 st.rerun()
         st.stop()
 
-    # --- RENDERIZADO DE UI ---
     ui.render_cabecera(estado)
     ui.render_sidebar(estado)
 
-    tab_cronicas, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_vida, tab_graficos = st.tabs([
-        "📰 Portada", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "📊 Gráficos"
+    # AGREGAMOS LA NUEVA PESTAÑA DE LOGROS
+    tab_cronicas, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_vida, tab_logros, tab_graficos = st.tabs([
+        "📰 Portada", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🏆 Logros", "📊 Gráficos"
     ])
 
-    # ==========================================
-    # PESTAÑA 1: PORTADA (CHAT Y ACCIONES)
-    # ==========================================
     with tab_cronicas:
         ui.render_titular(estado)
         ui.render_objetivos(estado)
 
-        # Historial de chat
         with st.container(height=400):
             for msg in st.session_state.mensajes[-10:]:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
 
-        # --- ESTADOS BLOQUEANTES (Hospitalización, Juicio Político) ---
         if estado.get("hospitalizado"):
             st.warning("🏥 Estás hospitalizado. Debés recuperarte.")
             if st.button("🛌 Descansar 30 días", type="primary"):
@@ -180,35 +168,44 @@ else:
 
         st.divider()
 
-        # --- INPUT DEL JUGADOR ---
         accion = st.chat_input("Escribí tu acción... (ej: 'Fundar empresa Tech', 'Estudiar política', 'Dar entrevista a Clarín')")
         
         if accion:
             st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
             
-            # 1. ROUTER DE ACCIONES (Código puro)
             es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
             
             if es_determinista:
-                # Si el código la resolvió, mostramos el mensaje y avanzamos el tiempo un poco
                 st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
                 estado["turno"] += 1
                 estado["energia"] = max(0, estado["energia"] - 10)
+                
+                # v1.2: Disparar mecánicas dinámicas al pasar el tiempo
+                evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
+                if evento_ocurrio:
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
+
+                acciones_rivales = mechanics.procesar_turno_rivales(estado)
+                for msg_rival in acciones_rivales:
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
+
+                nuevos_logros = mechanics.verificar_logros(estado)
+                for logro in nuevos_logros:
+                    st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
+                    
                 st.rerun()
             else:
-                # 2. FALLBACK A LA IA (Narrativa y eventos complejos)
                 with st.spinner("El Game Master está simulando..."):
                     contexto = prompts.generar_prompt_contexto(estado)
                     mensajes_chat = [
                         {"role": "system", "content": prompts.construir_sistema(estado["nombre"], estado["edad"], "Historia...", estado["rasgo"], "Origen", estado["ideologia"])},
                         {"role": "system", "content": f"CONTEXTO ACTUAL:\n{contexto}"},
-                        *st.session_state.mensajes[-6:] # Historial reciente
+                        *st.session_state.mensajes[-6:]
                     ]
                     
                     respuesta_raw = prompts.llamar_llm(mensajes_chat, 7, "")
                     json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
                     
-                    # 3. PROCESAR RESPUESTA (Aplica economía, ministros, escándalo)
                     estado, narrativa_final, game_over = mechanics.procesar_respuesta(
                         json_data.get("narrativa", ""), 7, estado
                     )
@@ -216,21 +213,40 @@ else:
                     st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
                     if game_over:
                         st.session_state.game_over = game_over
+                        
+                    # v1.2: Disparar mecánicas dinámicas tras respuesta de IA
+                    evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
+                    if evento_ocurrio:
+                        st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
+
+                    acciones_rivales = mechanics.procesar_turno_rivales(estado)
+                    for msg_rival in acciones_rivales:
+                        st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
+
+                    nuevos_logros = mechanics.verificar_logros(estado)
+                    for logro in nuevos_logros:
+                        st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
                 
                 st.rerun()
 
-        # --- AVANZAR TIEMPO SIN ACTUAR ---
         with st.expander("⏳ Dejar pasar el tiempo"):
             if st.button("⏭️ Avanzar 1 mes (Descansar)"):
                 estado["turno"] += 1
                 estado["energia"] = min(100, estado["energia"] + 30)
                 resumen = mechanics.procesar_economia(estado)
                 st.session_state.mensajes.append({"role": "assistant", "content": f"⏳ *Pasaste el tiempo descansando.*\n\n{resumen}"})
+                
+                # v1.2: Disparar mecánicas dinámicas
+                evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
+                if evento_ocurrio:
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
+                    
+                nuevos_logros = mechanics.verificar_logros(estado)
+                for logro in nuevos_logros:
+                    st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
+                    
                 st.rerun()
 
-    # ==========================================
-    # OTRAS PESTAÑAS (Solo renderizado)
-    # ==========================================
     with tab_gobierno:
         ui.render_tab_gobierno(estado)
         
@@ -245,6 +261,21 @@ else:
         
     with tab_vida:
         ui.render_tab_vida(estado)
+
+    # NUEVA PESTAÑA DE LOGROS
+    with tab_logros:
+        st.subheader("🏆 Salón de Logros")
+        st.markdown("Desbloqueá logros cumpliendo desafíos a lo largo de tu dinastía.")
+        st.divider()
         
+        logros_actuales = estado.get("logros", [])
+        
+        for logro_def in mechanics.LOGROS_DEFINICIONES:
+            is_unlocked = logro_def["id"] in logros_actuales
+            if is_unlocked:
+                st.success(f"✅ **{logro_def['nombre']}**: {logro_def['desc']}")
+            else:
+                st.markdown(f"🔒 **???**: {logro_def['desc']}")
+                
     with tab_graficos:
         ui.render_tab_graficos(estado)

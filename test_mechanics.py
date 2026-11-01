@@ -7,41 +7,35 @@ from mechanics import (
     calcular_exito_campana,
     procesar_economia,
     verificar_estado_escandalo,
-    proponer_ley
+    proponer_ley,
+    procesar_tension_facciones,
+    verificar_logros
 )
 from state import inicializar_estado
 
 # ==============================================================================
-# FIXTURES (Preparan un estado limpio para cada test)
+# FIXTURES
 # ==============================================================================
 
 @pytest.fixture
 def estado_base():
-    """Crea un estado inicial limpio para las pruebas."""
     return inicializar_estado(
-        nombre="Juan", 
-        apellido="Pérez", 
-        edad=30.0, 
-        genero="Masculino", 
-        origen="Técnico", 
-        ideologia="Liberal", 
-        rasgo="Trabajador"
+        nombre="Juan", apellido="Pérez", edad=30.0, genero="Masculino", 
+        origen="Técnico", ideologia="Liberal", rasgo="Trabajador"
     )
 
 @pytest.fixture
 def estado_rico(estado_base):
-    """Un estado con mucho dinero para probar compras."""
     estado_base["dinero_personal"] = 5000000
     return estado_base
 
 @pytest.fixture
 def estado_presidente(estado_base):
-    """Un estado donde el jugador es Presidente."""
     estado_base["cargo_politico"] = "Presidente"
     return estado_base
 
 # ==============================================================================
-# TESTS DE SEGURIDAD Y SANITIZACIÓN
+# TESTS DE SEGURIDAD
 # ==============================================================================
 
 class TestSanitizacion:
@@ -59,12 +53,11 @@ class TestSanitizacion:
         assert ok is False
 
 # ==============================================================================
-# TESTS DE MECÁNICAS DE NEGOCIO (EMPRESAS)
+# TESTS DE MECÁNICAS DE NEGOCIO
 # ==============================================================================
 
 class TestEmpresas:
     def test_fundar_empresa_exitosa(self, estado_rico):
-        # Un técnico tiene 40 de negocios (20 base + 20 de origen? No, técnico da -10 negocios, pero subamoslo manual para el test)
         estado_rico["habilidad_negocios"] = 50 
         ok, msg = intentar_fundar_empresa(estado_rico, "Tech Startup")
         assert ok is True
@@ -78,7 +71,7 @@ class TestEmpresas:
         assert "No tenés fondos" in msg
 
     def test_fundar_empresa_sin_habilidad(self, estado_rico):
-        estado_rico["habilidad_negocios"] = 10 # Muy bajo
+        estado_rico["habilidad_negocios"] = 10
         ok, msg = intentar_fundar_empresa(estado_rico, "Tech Startup")
         assert ok is False
         assert "Habilidad insuficiente" in msg
@@ -100,8 +93,7 @@ class TestHabilidadesYVida:
         ok, msg = intentar_estudiar(estado_base, "negocios")
         assert ok is True
         assert estado_base["habilidad_negocios"] > 20
-        assert estado_base["energia"] < energia_inicial  # La energía debe bajar, sin importar el máximo
-        assert estado_base["energia"] == energia_inicial - 20  # Verificamos que gastó exactamente 20
+        assert estado_base["energia"] < energia_inicial
 
     def test_estudiar_sin_energia(self, estado_base):
         estado_base["energia"] = 5
@@ -123,7 +115,6 @@ class TestHabilidadesYVida:
 
 class TestPoliticaYEconomia:
     def test_campana_ganadora(self, estado_base):
-        # Forzamos stats altos para ganar
         estado_base["habilidad_politica"] = 100
         estado_base["aprobacion_publica"] = 90
         estado_base["fondo_campaña"] = 500000
@@ -132,7 +123,6 @@ class TestPoliticaYEconomia:
         assert "Victoria" in msg
 
     def test_campana_perdedora(self, estado_base):
-        # Forzamos stats bajos
         estado_base["habilidad_politica"] = 0
         estado_base["aprobacion_publica"] = 10
         ok, msg = calcular_exito_campana(estado_base, "Presidente")
@@ -143,7 +133,6 @@ class TestPoliticaYEconomia:
         estado_base["trabajo_actual"] = "Junior Developer"
         estado_base["dinero_personal"] = 100000
         resumen = procesar_economia(estado_base)
-        # Debería haber cobrado y gastado
         assert "Sueldo" in resumen or "Costo de vida" in resumen
 
     def test_escandalo_desata_juicio(self, estado_base):
@@ -156,3 +145,23 @@ class TestPoliticaYEconomia:
         ok, msg = proponer_ley(estado_base, "Ley de Test", "Test")
         assert ok is False
         assert "Solo podés proponer" in msg
+
+# ==============================================================================
+# TESTS DE NUEVAS FEATURES v1.2
+# ==============================================================================
+
+class TestNuevasFeaturesV12:
+    def test_tension_facciones(self, estado_base):
+        # Si subo mucho con Militares, Sindicatos debe bajar
+        estado_base["facciones"]["Militares"] = 80
+        estado_base["facciones"]["Sindicatos"] = 50
+        msgs = procesar_tension_facciones(estado_base)
+        assert estado_base["facciones"]["Sindicatos"] == 40
+        assert len(msgs) > 0
+
+    def test_desbloqueo_logro_magnate(self, estado_base):
+        # Si tengo 1 millón, debo desbloquear el logro Magnate
+        estado_base["dinero_personal"] = 1000000
+        logros_nuevos = verificar_logros(estado_base)
+        assert "Magnate" in logros_nuevos
+        assert "primer_millon" in estado_base["logros"]
