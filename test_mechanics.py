@@ -89,16 +89,18 @@ class TestEmpresas:
 
 class TestHabilidadesYVida:
     def test_estudiar_negocios(self, estado_base):
-        energia_inicial = estado_base["energia"]
+        habilidad_inicial = estado_base["habilidad_negocios"]
         ok, msg = intentar_estudiar(estado_base, "negocios")
         assert ok is True
-        assert estado_base["habilidad_negocios"] > 20
-        assert estado_base["energia"] < energia_inicial
+        assert estado_base["habilidad_negocios"] > habilidad_inicial
+        assert "Negocios" in msg or "finanzas" in msg.lower()
 
-    def test_estudiar_sin_energia(self, estado_base):
-        estado_base["energia"] = 5
-        ok, _ = intentar_estudiar(estado_base, "tecnica")
-        assert ok is False
+    def test_estudiar_politica(self, estado_base):
+        habilidad_inicial = estado_base["habilidad_politica"]
+        ok, msg = intentar_estudiar(estado_base, "politica")
+        assert ok is True
+        assert estado_base["habilidad_politica"] > habilidad_inicial
+        assert "Política" in msg or "oratoria" in msg.lower()
 
     def test_mejorar_vivienda(self, estado_rico):
         ok, msg = intentar_mejorar_vivienda(estado_rico)

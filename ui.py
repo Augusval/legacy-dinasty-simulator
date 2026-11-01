@@ -38,7 +38,7 @@ def render_cabecera(estado: dict):
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# SIDEBAR (con FIX del bug de energía > 100)
+# SIDEBAR (LIMPIA - Sin Energía/Salud Física/Salud Mental)
 # ==============================================================================
 
 def render_sidebar(estado: dict):
@@ -47,11 +47,11 @@ def render_sidebar(estado: dict):
         st.markdown(f"**{estado.get('nombre', '')}** | {estado.get('cargo_politico', 'Ciudadano')}")
         st.divider()
 
+        # --- IDENTIDAD Y ECONOMÍA ---
         st.subheader("👤 Estado Personal")
         col1, col2 = st.columns(2)
         col1.metric("Edad", f"{int(estado.get('edad', 24))} años")
         
-        # FIX: Formatear dinero grande para que no se corte
         dinero = estado.get('dinero_personal', 0)
         if dinero >= 1000000:
             dinero_texto = f"${dinero/1000000:.2f}M"
@@ -61,16 +61,7 @@ def render_sidebar(estado: dict):
             dinero_texto = f"${dinero:,}"
         col2.metric("Dinero", dinero_texto)
         
-        # FIX: Usar min(1.0, valor/100) para que st.progress no explote
-        energia = estado.get("energia", 100)
-        st.progress(min(1.0, energia / 100), text=f"⚡ Energía: {energia}%")
-        
-        salud_fisica = estado.get("salud_fisica", 100)
-        st.progress(min(1.0, salud_fisica / 100), text=f"❤️ Salud Física: {salud_fisica}%")
-        
-        salud_mental = estado.get("salud_mental", 100)
-        st.progress(min(1.0, salud_mental / 100), text=f"🧠 Salud Mental: {salud_mental}%")
-        
+        # --- PODER E INFLUENCIA (Stats que SÍ importan) ---
         st.subheader("🏛️ Poder e Influencia")
         reputacion = estado.get("reputacion", 50)
         st.progress(min(1.0, reputacion / 100), text=f"🎩 Reputación: {reputacion}")
@@ -83,20 +74,30 @@ def render_sidebar(estado: dict):
         st.markdown(f"<div style='color: {color_escandalo}; font-weight: bold;'>🚨 Nivel de Escándalo: {escandalo}%</div>", unsafe_allow_html=True)
         st.progress(min(1.0, escandalo / 100))
 
+        # --- HABILIDADES ---
         st.divider()
         st.subheader("📊 Habilidades")
         st.progress(min(1.0, estado.get("habilidad_tecnica", 20) / 100), text=f"💻 Técnica: {estado.get('habilidad_tecnica', 20)}")
         st.progress(min(1.0, estado.get("habilidad_politica", 20) / 100), text=f"🗳️ Política: {estado.get('habilidad_politica', 20)}")
         st.progress(min(1.0, estado.get("habilidad_negocios", 20) / 100), text=f"💼 Negocios: {estado.get('habilidad_negocios', 20)}")
 
+        # --- FACCIONES ---
         st.divider()
         st.subheader("🤝 Facciones")
         facciones = estado.get("facciones", {})
         for fac, val in facciones.items():
             st.progress(min(1.0, val / 100), text=f"{fac}: {val}")
+        
+        # --- BONIFICACIONES ACTIVAS ---
+        bonificaciones = estado.get("bonificaciones_objetivos", [])
+        if bonificaciones:
+            st.divider()
+            st.subheader("🌟 Bonificaciones")
+            for bonif in bonificaciones:
+                st.markdown(f"✨ {bonif}")
 
 # ==============================================================================
-# PESTAÑAS DE CONTENIDO
+# PESTAÑAS DE CONTENIDO (LIMPIAS)
 # ==============================================================================
 
 def render_tab_gobierno(estado: dict):
@@ -123,7 +124,7 @@ def render_tab_empresas(estado: dict):
     corporaciones = estado.get("corporaciones", {})
     
     if not corporaciones:
-        st.info("📉 No posees empresas. Fundá una desde el panel inferior.")
+        st.info("📉 No posees empresas. Usá los botones de abajo para fundar tu primera empresa.")
         return
         
     for key, emp in corporaciones.items():
@@ -155,6 +156,10 @@ def render_tab_prensa(estado: dict):
         
         color = "green" if apoyo > 20 else ("red" if apoyo < -20 else "gray")
         col3.markdown(f"<div style='color: {color}; font-weight: bold; text-align: right;'>Apoyo: {apoyo}</div>", unsafe_allow_html=True)
+    
+    st.divider()
+    st.markdown("**Interactuar con los medios:**")
+    st.markdown("Escribí en el chat: *'Dar entrevista a Clarín'* o *'Comprar pauta en Página 12'*")
 
 def render_tab_rivales(estado: dict):
     st.subheader("⚔️ Rivales Políticos")
@@ -176,24 +181,22 @@ def render_tab_rivales(estado: dict):
             else:
                 st.info("No se conocen secretos de este rival.")
 
-def render_tab_vida(estado: dict):
-    st.subheader("👨‍👩‍👧‍👦 Vida y Familia")
-    st.write(f"**Pareja:** {estado.get('pareja_nombre', 'Soltero/a')} (Afinidad: {estado.get('pareja_afinidad', 0)}%)")
-    st.divider()
+def render_tab_familia(estado: dict):
+    """Pestaña Familia simplificada (sin pareja/hijos decorativos)."""
+    st.subheader("👨‍👩‍👧 Familia y Legado")
     
-    hijos = estado.get("hijos", [])
-    if not hijos:
-        st.info("Aún no tenés herederos.")
-        return
-        
-    for h in hijos:
-        nombre = h.nombre if hasattr(h, 'nombre') else h.get('nombre', 'Hijo')
-        edad = h.edad if hasattr(h, 'edad') else h.get('edad', 0)
-        potencial = h.calcular_potencial_heredero() if hasattr(h, 'calcular_potencial_heredero') else 50
-        
-        col1, col2 = st.columns(2)
-        col1.metric(nombre, f"{edad} años")
-        col2.metric("Potencial de Heredero", f"{potencial}/100")
+    generacion = estado.get("generacion_actual", 1)
+    st.markdown(f"**Generación actual:** {generacion}")
+    
+    # Mostrar bonificaciones activas como parte del legado
+    bonificaciones = estado.get("bonificaciones_objetivos", [])
+    if bonificaciones:
+        st.divider()
+        st.markdown("**🌟 Legado construido:**")
+        for bonif in bonificaciones:
+            st.markdown(f"✨ {bonif}")
+    else:
+        st.info("Aún no has construido un legado significativo. Completá Objetivos Dinásticos para ganar bonificaciones permanentes.")
 
 def render_tab_objetivos(estado: dict):
     st.subheader("🎯 Objetivos Dinásticos")
@@ -205,7 +208,7 @@ def render_tab_objetivos(estado: dict):
     bonificaciones = estado.get("bonificaciones_objetivos", [])
     
     if not objetivos:
-        st.info("No tenés objetivos dinásticos activos.")
+        st.info("No tenés objetivos dinásticos activos. Elegí hasta 3 al crear una nueva partida.")
         return
     
     recompensas = {
@@ -249,7 +252,6 @@ def render_tab_logros(estado: dict):
     st.markdown("Desbloqueá logros cumpliendo desafíos a lo largo de tu dinastía.")
     st.divider()
     
-    # Importamos las definiciones desde mechanics
     from mechanics import LOGROS_DEFINICIONES
     
     logros_actuales = estado.get("logros", [])

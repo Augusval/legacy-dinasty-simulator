@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Dict, Any, List, Tuple, Optional
 from entidades import Empresa, Hijo, Ministro, Medio, Rival
-from state import TIPOS_EMPRESA, PROVINCIAS, NOMBRES_PILA
+from state import TIPOS_EMPRESA
 import prompts
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,10 @@ def procesar_economia(estado: Dict[str, Any]) -> str:
         
     estado["edad"] = estado.get("edad", 24) + 0.083
     
+    # Actualizar historial para gráficos
+    estado.setdefault("historial_patrimonio", []).append(estado.get("dinero_personal", 0))
+    estado.setdefault("historial_aprobacion", []).append(estado.get("aprobacion_publica", 50))
+    
     return "\n".join(resumen)
 
 # ==============================================================================
@@ -130,12 +134,7 @@ def intentar_fundar_empresa(estado: Dict[str, Any], tipo_empresa: str) -> Tuple[
     return True, f"🏢 **ÉXITO:** Fundaste {nueva_empresa.nombre}. Generará ${requisitos['dividendo_base']:,} base/mes."
 
 def intentar_estudiar(estado: Dict[str, Any], enfoque: str) -> Tuple[bool, str]:
-    """El jugador estudia para subir una habilidad específica."""
-    costo_energia = 20
-    if estado.get("energia", 0) < costo_energia:
-        return False, "😴 Estás muy cansado para estudiar."
-        
-    estado["energia"] -= costo_energia
+    """El jugador estudia para subir una habilidad específica. (Sin costo de energía)"""
     ganancia_base = random.randint(2, 5)
     
     if enfoque == "tecnica":
@@ -163,16 +162,15 @@ def intentar_mejorar_vivienda(estado: Dict[str, Any]) -> Tuple[bool, str]:
         
     estado["dinero_personal"] -= costo_mejora
     estado["nivel_calidad_vida"] = nivel_actual + 1
-    estado["salud_mental"] = min(100, estado.get("salud_mental", 100) + 10)
     
-    return True, f"🏠 **MEJORA:** Ahora vivís en un lugar mejor (Nivel {nivel_actual + 1}). Tu salud mental mejora, pero tus gastos fijos suben."
+    return True, f"🏠 **MEJORA:** Ahora vivís en un lugar mejor (Nivel {nivel_actual + 1}). Tus gastos fijos suben."
 
 # ==============================================================================
 # POLÍTICA, CAMPAÑAS Y ELECCIONES
 # ==============================================================================
 
 def calcular_exito_campana(estado: Dict[str, Any], cargo_objetivo: str) -> Tuple[bool, str]:
-    """Calcula el porcentaje de votos basado en Habilidad Política, Facciones y Opinión."""
+    """Calcula el porcentaje de votos basado en Habilidad Política, Facciones y Aprobación."""
     score = (estado.get("aprobacion_publica", 50) * 0.6) + (estado.get("reputacion", 50) * 0.4)
     habilidad_pol = estado.get("habilidad_politica", 20)
     score += habilidad_pol * 0.5
@@ -181,9 +179,6 @@ def calcular_exito_campana(estado: Dict[str, Any], cargo_objetivo: str) -> Tuple
     if facciones:
         promedio_facciones = sum(facciones.values()) / len(facciones)
         score += (promedio_facciones - 50) * 0.3
-        
-    fondo = estado.get("fondo_campaña", 0)
-    score += (fondo / 100000) * 2
     
     umbrales = {"Diputado": 40, "Gobernador": 60, "Presidente": 75}
     umbral = umbrales.get(cargo_objetivo, 50)
@@ -204,11 +199,10 @@ def invertir_en_campana(estado: Dict[str, Any], tipo: str) -> Tuple[bool, str]:
         return False, "💸 No tenés $50,000 para invertir en campaña."
         
     estado["dinero_personal"] -= costo
-    estado["fondo_campaña"] = estado.get("fondo_campaña", 0) + costo
     
     if tipo == "publicidad":
-        estado["opinion_publica"] = min(100, estado.get("opinion_publica", 50) + 3)
-        return True, "📺 Invertiste en publicidad. +3 Opinión Pública."
+        estado["aprobacion_publica"] = min(100, estado.get("aprobacion_publica", 50) + 3)
+        return True, "📺 Invertiste en publicidad. +3 Aprobación Pública."
     elif tipo == "actos":
         estado["reputacion"] = min(100, estado.get("reputacion", 50) + 3)
         return True, "🎤 Invertiste en actos proselitistas. +3 Reputación."
@@ -325,7 +319,7 @@ def verificar_estado_escandalo(estado: Dict[str, Any]) -> Optional[str]:
     return None
 
 # ==============================================================================
-# TENSIÓN DINÁMICA DE FACCIONES (v1.2)
+# TENSIÓN DINÁMICA DE FACCIONES
 # ==============================================================================
 
 def procesar_tension_facciones(estado: Dict[str, Any]) -> List[str]:
@@ -343,7 +337,7 @@ def procesar_tension_facciones(estado: Dict[str, Any]) -> List[str]:
     return mensajes
 
 # ==============================================================================
-# RIVALES ACTIVOS (v1.2)
+# RIVALES ACTIVOS
 # ==============================================================================
 
 def procesar_turno_rivales(estado: Dict[str, Any]) -> List[str]:
@@ -376,7 +370,7 @@ def procesar_turno_rivales(estado: Dict[str, Any]) -> List[str]:
                 if accion:
                     for stat, valor in efectos.items():
                         if stat in estado and isinstance(valor, (int, float)):
-                            if stat in ["reputacion", "aprobacion_publica", "opinion_publica"]:
+                            if stat in ["reputacion", "aprobacion_publica"]:
                                 estado[stat] = max(0, min(100, estado[stat] + valor))
                             elif stat == "dinero_personal":
                                 estado[stat] += valor
@@ -395,7 +389,7 @@ def procesar_turno_rivales(estado: Dict[str, Any]) -> List[str]:
     return mensajes
 
 # ==============================================================================
-# EVENTOS ALEATORIOS SORPRESIVOS (v1.2)
+# EVENTOS ALEATORIOS SORPRESIVOS
 # ==============================================================================
 
 def procesar_evento_aleatorio(estado: Dict[str, Any]) -> Tuple[bool, str]:
@@ -412,7 +406,7 @@ def procesar_evento_aleatorio(estado: Dict[str, Any]) -> Tuple[bool, str]:
             
             for stat, valor in efectos.items():
                 if stat in estado and isinstance(valor, (int, float)):
-                    if stat in ["reputacion", "aprobacion_publica", "energia", "salud_fisica"]:
+                    if stat in ["reputacion", "aprobacion_publica"]:
                         estado[stat] = max(0, min(100, estado[stat] + valor))
                     elif stat == "dinero_personal":
                         estado[stat] += valor
@@ -428,7 +422,7 @@ def procesar_evento_aleatorio(estado: Dict[str, Any]) -> Tuple[bool, str]:
     return False, ""
 
 # ==============================================================================
-# SISTEMA DE LOGROS DINÁMICO (v1.2)
+# SISTEMA DE LOGROS
 # ==============================================================================
 
 LOGROS_DEFINICIONES = [
@@ -457,7 +451,7 @@ def verificar_logros(estado: Dict[str, Any]) -> List[str]:
     return logros_desbloqueados
 
 # ==============================================================================
-# SISTEMA DE OBJETIVOS DINÁSTICOS CON RECOMPENSAS (v1.2.1)
+# SISTEMA DE OBJETIVOS DINÁSTICOS CON RECOMPENSAS
 # ==============================================================================
 
 def verificar_objetivos_dinasticos(estado: Dict[str, Any]) -> List[str]:
@@ -502,7 +496,7 @@ def verificar_objetivos_dinasticos(estado: Dict[str, Any]) -> List[str]:
     return mensajes
 
 # ==============================================================================
-# ROUTER DE ACCIONES DETERMINISTAS
+# ROUTER DE ACCIONES DETERMINISTAS (Sin energía)
 # ==============================================================================
 
 def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bool, str]:
@@ -564,7 +558,7 @@ def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bo
     return False, ""
 
 # ==============================================================================
-# PROCESADOR PRINCIPAL DE LA IA
+# PROCESADOR PRINCIPAL DE LA IA (Limpio de stats inútiles)
 # ==============================================================================
 
 def procesar_respuesta(
@@ -588,12 +582,15 @@ def procesar_respuesta(
         except json.JSONDecodeError:
             narrativa = respuesta_ia
             
+    # Solo aplicamos efectos a las stats que REALMENTE existen y importan
+    stats_validas = ["reputacion", "aprobacion_publica", "nivel_escandalo", "dinero_personal"]
+    
     for stat, valor in efectos_ia.items():
-        if stat in estado and isinstance(valor, (int, float)):
-            if stat in ["reputacion", "opinion_publica", "aprobacion_publica", "energia", "salud_fisica", "salud_mental"]:
-                estado[stat] = max(0, min(100, estado[stat] + valor))
-            elif stat in ["dinero_personal", "tesoro_nacional"]:
+        if stat in stats_validas and stat in estado and isinstance(valor, (int, float)):
+            if stat == "dinero_personal":
                 estado[stat] += valor
+            else:
+                estado[stat] = max(0, min(100, estado[stat] + valor))
                 
     if dias_avanzados > 0 and not es_inicio:
         resumen_econ = procesar_economia(estado)
@@ -613,7 +610,7 @@ def procesar_respuesta(
         elif alerta_escandalo:
             narrativa += f"\n\n🚨 {alerta_escandalo}"
             
-        if estado.get("edad", 24) >= 85 or estado.get("salud_fisica", 100) <= 0:
+        if estado.get("edad", 24) >= 85:
             game_over = "💀 **FIN DE UNA ERA:** Has fallecido. Es hora de que tu heredero tome el mando."
 
     return estado, narrativa, game_over

@@ -13,7 +13,7 @@ from entidades import Empresa, Hijo, Ministro, Medio, Rival
 
 logger = logging.getLogger(__name__)
 
-st.set_page_config(page_title="LEGACY v1.2", layout="wide", page_icon="📰")
+st.set_page_config(page_title="LEGACY", layout="wide", page_icon="📰")
 ui.inyectar_css()
 
 if "juego_iniciado" not in st.session_state:
@@ -23,7 +23,7 @@ if "mensajes" not in st.session_state:
 if "tutorial_visto" not in st.session_state:
     st.session_state.tutorial_visto = False
 
-st.title("LEGACY - Crónicas Dinásticas v1.2")
+st.title("LEGACY - Crónicas Dinásticas")
 
 # ==============================================================================
 # PANTALLA DE INICIO
@@ -66,6 +66,7 @@ if not st.session_state.juego_iniciado:
             del st.session_state.nombre_inicial
             del st.session_state.apellido_inicial
             
+            # Inicializar estado (ya viene limpio desde state.py)
             estado = inicializar_estado(nombre, apellido, edad, genero, origen, ideologia, rasgo)
             estado["objetivos_dinasticos"] = objetivos
             estado["objetivos_completados"] = []
@@ -88,7 +89,10 @@ if not st.session_state.juego_iniciado:
                 
                 narrativa_inicial = json_data.get("narrativa", f"Bienvenido a LEGACY, {nombre} {apellido}. Tenés {edad} años y vivís en Argentina. Tu historia comienza ahora.")
                 
-                st.session_state.mensajes.append({"role": "assistant", "content": narrativa_inicial})
+                # FIX: Solo agregar al chat si la narrativa no está vacía
+                if narrativa_inicial and narrativa_inicial.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": narrativa_inicial})
+                
                 st.session_state.estado["titular_periodico"] = f"Comienza la era de la Dinastía {apellido}."
                 
             st.rerun()
@@ -126,7 +130,7 @@ else:
                     st.session_state.estado = nuevo_estado
                     st.session_state.game_over = None
                     st.session_state.hof_guardado = False
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                    if msg: st.session_state.mensajes.append({"role": "assistant", "content": msg})
                     st.rerun()
         with col2:
             if st.button("🔄 Nueva Partida", use_container_width=True):
@@ -138,7 +142,7 @@ else:
     ui.render_cabecera(estado)
     ui.render_sidebar(estado)
 
-    tab_cronicas, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_vida, tab_objetivos, tab_logros, tab_graficos = st.tabs([
+    tab_cronicas, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_familia, tab_objetivos, tab_logros, tab_graficos = st.tabs([
         "📰 Portada", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🎯 Objetivos", "🏆 Logros", "📊 Gráficos"
     ])
 
@@ -169,23 +173,14 @@ else:
                 st.rerun()
             st.stop()
 
-        # Historial de chat
+        # Historial de chat (FIX: Filtrar mensajes vacíos)
         with st.container(height=400):
             for msg in st.session_state.mensajes[-10:]:
-                with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
+                if msg["content"] and msg["content"].strip():
+                    with st.chat_message(msg["role"]):
+                        st.markdown(msg["content"])
 
-        # Estados especiales
-        if estado.get("hospitalizado"):
-            st.warning("🏥 Estás hospitalizado. Debés recuperarte.")
-            if st.button("🛌 Descansar 30 días", type="primary"):
-                estado["hospitalizado"] = False
-                estado["edad"] += 0.083 * 30
-                estado["salud_fisica"] = min(100, estado["salud_fisica"] + 50)
-                st.session_state.mensajes.append({"role": "assistant", "content": "Te recuperaste en el hospital. Pasaron 30 días."})
-                st.rerun()
-            st.stop()
-
+        # Estados especiales (Juicio Político)
         if estado.get("juicio_politico_activo"):
             st.error("⚖️ **JUICIO POLÍTICO ACTIVO:** Tenés que defenderte o serás destituido.")
             if st.button("🗣️ Discurso de Defensa (Cuesta 20 Reputación)", type="primary"):
@@ -222,9 +217,11 @@ else:
                     logger.warning(f"IA de narración falló: {e}")
                     narrativa_final = msg_determinista
                 
-                st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                # FIX: Solo agregar si no está vacío
+                if narrativa_final and narrativa_final.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                
                 estado["turno"] += 1
-                estado["energia"] = max(0, estado["energia"] - 10)
                 
             else:
                 # 2. Acción libre, la IA decide todo
@@ -243,25 +240,27 @@ else:
                         json_data.get("narrativa", ""), 7, estado
                     )
                     
-                    st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                    if narrativa_final and narrativa_final.strip():
+                        st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
                     if game_over:
                         st.session_state.game_over = game_over
                     
                     estado["turno"] += 1
-                    estado["energia"] = max(0, estado["energia"] - 10)
 
             # --- MECÁNICAS DINÁMICAS POST-ACCIÓN ---
             objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
             for obj_msg in objetivos_nuevos:
-                st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
+                if obj_msg and obj_msg.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
             
             evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
-            if evento_ocurrio:
+            if evento_ocurrio and msg_evento and msg_evento.strip():
                 st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
 
             acciones_rivales = mechanics.procesar_turno_rivales(estado)
             for msg_rival in acciones_rivales:
-                st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
+                if msg_rival and msg_rival.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
 
             nuevos_logros = mechanics.verificar_logros(estado)
             for logro in nuevos_logros:
@@ -273,16 +272,19 @@ else:
         with st.expander("⏳ Dejar pasar el tiempo"):
             if st.button("⏭️ Avanzar 1 mes (Descansar)"):
                 estado["turno"] += 1
-                estado["energia"] = min(100, estado["energia"] + 30)
                 resumen = mechanics.procesar_economia(estado)
-                st.session_state.mensajes.append({"role": "assistant", "content": f"⏳ *Pasaste el tiempo descansando.*\n\n{resumen}"})
+                
+                msg_tiempo = f"⏳ *Pasaste el tiempo.*\n\n{resumen}"
+                if msg_tiempo and msg_tiempo.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_tiempo})
                 
                 objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
                 for obj_msg in objetivos_nuevos:
-                    st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
+                    if obj_msg and obj_msg.strip():
+                        st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
                 
                 evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
-                if evento_ocurrio:
+                if evento_ocurrio and msg_evento and msg_evento.strip():
                     st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
                     
                 nuevos_logros = mechanics.verificar_logros(estado)
@@ -316,7 +318,6 @@ else:
                     st.session_state.mensajes.append({"role": "assistant", "content": msg})
                 
                 estado["turno"] += 1
-                estado["energia"] = max(0, estado["energia"] - 20)
                 st.rerun()
 
     # =====================================================================
@@ -335,28 +336,20 @@ else:
             if st.button("💻 Fundar Tech Startup\n(Costo: $250K | Req: 50 Negocios)", use_container_width=True):
                 accion = "fundar empresa tech"
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                
                 es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                
-                if es_determinista:
-                    estado["turno"] += 1
-                    estado["energia"] = max(0, estado["energia"] - 15)
-                
+                if msg_determinista and msg_determinista.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                estado["turno"] += 1
                 st.rerun()
         
         with col2:
             if st.button("🏠 Fundar Inmobiliaria\n(Costo: $500K | Req: 70 Negocios)", use_container_width=True):
                 accion = "fundar inmobiliaria"
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                
                 es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                
-                if es_determinista:
-                    estado["turno"] += 1
-                    estado["energia"] = max(0, estado["energia"] - 15)
-                
+                if msg_determinista and msg_determinista.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                estado["turno"] += 1
                 st.rerun()
         
         col3, col4 = st.columns(2)
@@ -365,62 +358,39 @@ else:
             if st.button("🏦 Fundar Banco\n(Costo: $1M | Req: 85 Negocios)", use_container_width=True):
                 accion = "fundar banco"
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                
                 es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                
-                if es_determinista:
-                    estado["turno"] += 1
-                    estado["energia"] = max(0, estado["energia"] - 15)
-                
+                if msg_determinista and msg_determinista.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                estado["turno"] += 1
                 st.rerun()
         
         with col4:
             if st.button("📊 Fundar Consultora\n(Costo: $100K | Req: 30 Negocios)", use_container_width=True):
                 accion = "fundar consultora"
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                
                 es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                
-                if es_determinista:
-                    estado["turno"] += 1
-                    estado["energia"] = max(0, estado["energia"] - 15)
-                
+                if msg_determinista and msg_determinista.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                estado["turno"] += 1
                 st.rerun()
 
     # =====================================================================
-    # PESTAÑA PRENSA
+    # OTRAS PESTAÑAS
     # =====================================================================
     with tab_prensa:
         ui.render_tab_prensa(estado)
 
-    # =====================================================================
-    # PESTAÑA RIVALES
-    # =====================================================================
     with tab_rivales:
         ui.render_tab_rivales(estado)
 
-    # =====================================================================
-    # PESTAÑA FAMILIA
-    # =====================================================================
-    with tab_vida:
-        ui.render_tab_vida(estado)
+    with tab_familia:
+        ui.render_tab_familia(estado)
 
-    # =====================================================================
-    # PESTAÑA OBJETIVOS
-    # =====================================================================
     with tab_objetivos:
         ui.render_tab_objetivos(estado)
 
-    # =====================================================================
-    # PESTAÑA LOGROS
-    # =====================================================================
     with tab_logros:
         ui.render_tab_logros(estado)
                 
-    # =====================================================================
-    # PESTAÑA GRÁFICOS
-    # =====================================================================
     with tab_graficos:
         ui.render_tab_graficos(estado)
