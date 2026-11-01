@@ -1,0 +1,26 @@
+# Archivos de guardado y sesiones
+legacy_save.json
+legacy_slot_*.json
+legacy_hall_of_fame.json
+.streamlit/secrets.toml
+
+# Archivos de Python y entorno
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
