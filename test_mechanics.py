@@ -96,10 +96,12 @@ class TestEmpresas:
 
 class TestHabilidadesYVida:
     def test_estudiar_negocios(self, estado_base):
+        energia_inicial = estado_base["energia"]
         ok, msg = intentar_estudiar(estado_base, "negocios")
         assert ok is True
         assert estado_base["habilidad_negocios"] > 20
-        assert estado_base["energia"] < 100
+        assert estado_base["energia"] < energia_inicial  # La energía debe bajar, sin importar el máximo
+        assert estado_base["energia"] == energia_inicial - 20  # Verificamos que gastó exactamente 20
 
     def test_estudiar_sin_energia(self, estado_base):
         estado_base["energia"] = 5
