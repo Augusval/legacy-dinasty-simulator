@@ -5,16 +5,18 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![CI/CD Tests](https://github.com/Augusval/legacy-dinasty-simulator/actions/workflows/ci-tests.yml/badge.svg)](https://github.com/Augusval/legacy-dinasty-simulator/actions/workflows/ci-tests.yml)
 
-> **🎮 [JUGAR VERSIÓN 1.1 EN VIVO](https://legacy-dinasty-simulator.streamlit.app)** *(Sin instalar nada, corre directo en tu navegador)*
+> **🎮 [JUGAR VERSIÓN 1.2 EN VIVO](https://legacy-dinasty-simulator.streamlit.app)** *(Sin instalar nada, corre directo en tu navegador)*
 
 Simulador político, económico y de gestión dinástica impulsado por IA (LLM). Inspirado en la profundidad estratégica de *Crusader Kings* y la narrativa de *House of Cards*.
 
-## 🚀 Características Principales (v1.1)
+## 🚀 Características Principales (v1.2)
 
 ### 🏗️ Arquitectura de Software
-- **Clean Architecture & Dataclasses:** Separación estricta de responsabilidades. La lógica de negocio (`mechanics.py`) está 100% desacoplada de la UI (`app.py`, `ui.py`) y utiliza Dataclasses tipadas (`entidades.py`) en lugar de diccionarios anidados.
-- **Action Router System:** Sistema híbrido que resuelve acciones mecánicas deterministas (ej: fundar empresas, estudiar) en código puro para ahorrar tokens de IA, delegando solo la narrativa y eventos complejos al LLM.
-- **CI/CD con GitHub Actions:** Pipeline automatizado que ejecuta 16 tests unitarios con `pytest` en cada push, garantizando la estabilidad del motor de juego.
+- **Clean Architecture & Dataclasses:** Separación estricta de responsabilidades. La lógica de negocio (`mechanics.py`) está 100% desacoplada de la UI (`app.py`, `ui.py`) y utiliza Dataclasses tipadas (`entidades.py`).
+- **Action Router System:** Sistema híbrido que resuelve acciones mecánicas deterministas en código puro para ahorrar tokens de IA, delegando solo la narrativa y eventos complejos al LLM.
+- **CI/CD con GitHub Actions:** Pipeline automatizado que ejecuta 20 tests unitarios con `pytest` en cada push.
+- **Logging Profesional:** Sistema de logs con `logging` de Python que registra errores y eventos críticos en `error.log`.
+- **Resiliencia de IA:** Sistema de reintentos automático (3 intentos) con fallback elegante si la IA falla.
 
 ### 🎮 Mecánicas de Juego Profundas
 - **Habilidades con Impacto Real:** Técnica (sueldos y megaobras), Política (campañas y debates) y Negocios (fundación y dividendos de empresas).
@@ -22,12 +24,16 @@ Simulador político, económico y de gestión dinástica impulsado por IA (LLM).
 - **Prensa y Narrativa:** 3 medios de comunicación con posturas ideológicas. Comprá pauta o da entrevistas para manipular la opinión pública.
 - **Sistema de Escándalo y Juicio Político:** Si tu nivel de escándalo llega a 100, se dispara un Juicio Político. Si no te defendés, perdés la partida por destitución.
 - **Imperio Corporativo:** Fundá empresas (Consultora, Tech, Inmobiliaria, Banco) que escalan de nivel y generan dividendos pasivos multiplicados por tu Habilidad en Negocios.
+- **Rivales Activos (v1.2):** Los rivales políticos toman decisiones propias cada turno (denuncias, alianzas, golpes) basadas en IA contextual.
+- **Eventos Aleatorios Sorpresivos (v1.2):** 15% de probabilidad por turno de que ocurra un evento inesperado generado por IA (crisis, escándalos, oportunidades).
+- **Tensión Dinámica de Facciones (v1.2):** Si subís mucho con una facción, la facción opuesta se molesta automáticamente.
+- **Sistema de Logros (v1.2):** 6 logros desbloqueables (Magnate, Joven Promesa, Empresario, Amado por el Pueblo, Sobreviviente, Legado Eterno).
 
 ## 🛠️ Stack Tecnológico
-- **Backend/Lógica:** Python 3.10+ (Dataclasses, Type Hinting)
+- **Backend/Lógica:** Python 3.10+ (Dataclasses, Type Hinting, Logging)
 - **Frontend/UI:** Streamlit, Plotly (Visualización de datos históricos)
-- **IA/LLM:** Groq API (Llama 3) con parsing robusto de JSON
-- **Testing:** Pytest (16 tests unitarios pasando)
+- **IA/LLM:** Groq API (Llama 3) con parsing robusto de JSON y reintentos
+- **Testing:** Pytest (20 tests unitarios pasando)
 - **Control de Versiones:** Git, GitHub Actions (CI/CD)
 
 ## 🎮 Cómo Jugar (Local)
@@ -43,7 +49,7 @@ Simulador político, económico y de gestión dinástica impulsado por IA (LLM).
 ## 🧪 Testing
 El proyecto cuenta con pruebas unitarias automatizadas para garantizar la estabilidad de la lógica de negocio:
 `python -m pytest test_mechanics.py -v`
-*(Resultado esperado: 16 passed)*
+*(Resultado esperado: 20 passed)*
 
 ---
 *Desarrollado como proyecto de portafolio para demostrar habilidades en arquitectura de software, integración de IA, CI/CD y desarrollo de productos interactivos.*

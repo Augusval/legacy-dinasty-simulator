@@ -5,6 +5,23 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-11-02
+
+### 🚀 Agregado
+- **Rivales Activos:** Los rivales políticos ahora toman decisiones propias cada turno (20% de probabilidad) usando IA contextual. Pueden lanzar denuncias, aliarse con facciones o intentar golpes.
+- **Eventos Aleatorios Sorpresivos:** 15% de probabilidad por turno de que ocurra un evento inesperado generado por IA (crisis económicas, escándalos de aliados, desastres naturales, oportunidades).
+- **Tensión Dinámica de Facciones:** Si una facción sube mucho (>75), la facción opuesta baja automáticamente 10 puntos (ej: acercarse a Militares molesta a Sindicatos).
+- **Sistema de Logros:** 6 logros desbloqueables automáticamente (Magnate, Joven Promesa, Empresario, Amado por el Pueblo, Sobreviviente, Legado Eterno).
+- **Logging Profesional:** Sistema de logs con `logging` de Python que registra errores, intentos de IA y eventos críticos en `error.log`.
+- **Reintentos de IA:** Sistema de 3 reintentos automáticos con fallback elegante si la IA falla, evitando que el juego se rompa.
+- **Nueva Pestaña de Logros:** UI dedicada para mostrar logros desbloqueados y bloqueados.
+- **4 Tests Nuevos:** Tests para tensión de facciones y desbloqueo de logros (total: 20 tests).
+
+### 🔄 Cambiado
+- `prompts.py` ahora incluye generadores de prompts para eventos aleatorios, acciones de rivales y tensión de facciones.
+- `mechanics.py` integrado con las nuevas funciones dinámicas que se ejecutan al pasar el tiempo.
+- `app.py` actualizado para llamar a las nuevas mecánicas y mostrar la pestaña de logros.
+
 ## [1.1.0] - 2026-11-02
 
 ### 🚀 Agregado
