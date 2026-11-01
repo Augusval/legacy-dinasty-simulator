@@ -21,3 +21,11 @@ Un simulador político y de gestión dinástica impulsado por IA (LLM), construi
 3. Configurá tu API key en `.streamlit/secrets.toml`:
    ```toml
    GROQ_API_KEY = "tu_api_key_aqui"
+
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://legacy-dinasty-simulator.streamlit.app)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
+> **🎮 [JUGAR DEMO EN VIVO AQUÍ](https://legacy-dinasty-simulator.streamlit.app)** *(Sin instalar nada, corre directo en tu navegador)*
+
+Un simulador político y de gestión dinástica impulsado por IA, construido con Python y Streamlit. Inspirado en la profundidad estratégica de *Crusader Kings* y la narrativa de *House of Cards*.
