@@ -343,7 +343,7 @@ def procesar_tension_facciones(estado: Dict[str, Any]) -> List[str]:
     return mensajes
 
 # ==============================================================================
-# RIVALES ACTIVOS (v1.2.1 - Con narrativa procedural de fallback)
+# RIVALES ACTIVOS (v1.2)
 # ==============================================================================
 
 def procesar_turno_rivales(estado: Dict[str, Any]) -> List[str]:
@@ -367,26 +367,22 @@ def procesar_turno_rivales(estado: Dict[str, Any]) -> List[str]:
                     estado, rival.nombre, rival.poder
                 )
                 respuesta_raw = prompts.llamar_llm(mensajes_prompt, 0, "")
+                data = prompts.extraer_json_de_respuesta(respuesta_raw)
                 
-                if respuesta_raw:
-                    data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                    accion = data.get("accion", None)
-                    efectos = data.get("efectos", {})
-                    cambio_poder = data.get("cambio_poder_rival", 0)
-                    
-                    if accion:
-                        for stat, valor in efectos.items():
-                            if stat in estado and isinstance(valor, (int, float)):
-                                if stat in ["reputacion", "aprobacion_publica", "opinion_publica"]:
-                                    estado[stat] = max(0, min(100, estado[stat] + valor))
-                                elif stat == "dinero_personal":
-                                    estado[stat] += valor
-                                    
-                        rival.poder = max(0, min(100, rival.poder + cambio_poder))
-                        mensajes.append(f"🕴️ **{rival.nombre}**: {accion} (Su poder ahora es {rival.poder}%)")
-                    else:
-                        accion_proc = random.choice(acciones_proc)
-                        mensajes.append(f"🕴️ **{rival.nombre}** {accion_proc}. (Su poder: {rival.poder}%)")
+                accion = data.get("accion", None)
+                efectos = data.get("efectos", {})
+                cambio_poder = data.get("cambio_poder_rival", 0)
+                
+                if accion:
+                    for stat, valor in efectos.items():
+                        if stat in estado and isinstance(valor, (int, float)):
+                            if stat in ["reputacion", "aprobacion_publica", "opinion_publica"]:
+                                estado[stat] = max(0, min(100, estado[stat] + valor))
+                            elif stat == "dinero_personal":
+                                estado[stat] += valor
+                                
+                    rival.poder = max(0, min(100, rival.poder + cambio_poder))
+                    mensajes.append(f"🕴️ **{rival.nombre}**: {accion} (Su poder ahora es {rival.poder}%)")
                 else:
                     accion_proc = random.choice(acciones_proc)
                     mensajes.append(f"🕴️ **{rival.nombre}** {accion_proc}. (Su poder: {rival.poder}%)")
@@ -408,32 +404,22 @@ def procesar_evento_aleatorio(estado: Dict[str, Any]) -> Tuple[bool, str]:
         try:
             mensajes_prompt = prompts.generar_prompt_evento_aleatorio(estado)
             respuesta_raw = prompts.llamar_llm(mensajes_prompt, 0, "")
+            data = prompts.extraer_json_de_respuesta(respuesta_raw)
             
-            if respuesta_raw:
-                data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                titulo = data.get("titulo", "Evento Inesperado")
-                descripcion = data.get("descripcion", "Algo ocurrió.")
-                efectos = data.get("efectos", {})
-                
-                for stat, valor in efectos.items():
-                    if stat in estado and isinstance(valor, (int, float)):
-                        if stat in ["reputacion", "aprobacion_publica", "energia", "salud_fisica"]:
-                            estado[stat] = max(0, min(100, estado[stat] + valor))
-                        elif stat == "dinero_personal":
-                            estado[stat] += valor
-                        elif stat == "nivel_escandalo":
-                            estado[stat] = max(0, min(100, estado[stat] + valor))
-                            
-                return True, f"🎲 **{titulo}**\n{descripcion}"
-            else:
-                # Fallback procedural
-                eventos_proc = [
-                    "🎲 **Rumor en la ciudad:** Se dice que un aliado cercano está considerando traicionarte.",
-                    "🎲 **Oportunidad inesperada:** Un contacto te ofrece un negocio turbio pero rentable.",
-                    "🎲 **Crisis menor:** Una protesta en la capital afecta levemente tu imagen pública.",
-                    "🎲 **Noticia favorable:** Un medio importante elogia tu gestión silenciosamente."
-                ]
-                return True, random.choice(eventos_proc)
+            titulo = data.get("titulo", "Evento Inesperado")
+            descripcion = data.get("descripcion", "Algo ocurrió.")
+            efectos = data.get("efectos", {})
+            
+            for stat, valor in efectos.items():
+                if stat in estado and isinstance(valor, (int, float)):
+                    if stat in ["reputacion", "aprobacion_publica", "energia", "salud_fisica"]:
+                        estado[stat] = max(0, min(100, estado[stat] + valor))
+                    elif stat == "dinero_personal":
+                        estado[stat] += valor
+                    elif stat == "nivel_escandalo":
+                        estado[stat] = max(0, min(100, estado[stat] + valor))
+                        
+            return True, f"🎲 **{titulo}**\n{descripcion}"
             
         except Exception as e:
             logger.error(f"Error generando evento aleatorio: {e}")

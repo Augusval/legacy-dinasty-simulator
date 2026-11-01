@@ -7,6 +7,10 @@ import ui
 from state import inicializar_estado, leer_hall_of_fame, NOMBRES_PILA
 from entidades import Empresa, Hijo, Ministro, Medio, Rival
 
+# ==============================================================================
+# CONFIGURACIÓN INICIAL
+# ==============================================================================
+
 logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="LEGACY v1.2", layout="wide", page_icon="📰")
@@ -20,6 +24,10 @@ if "tutorial_visto" not in st.session_state:
     st.session_state.tutorial_visto = False
 
 st.title("LEGACY - Crónicas Dinásticas v1.2")
+
+# ==============================================================================
+# PANTALLA DE INICIO
+# ==============================================================================
 
 if not st.session_state.juego_iniciado:
     st.markdown("## El Comienzo de una Dinastía")
@@ -71,17 +79,14 @@ if not st.session_state.juego_iniciado:
             system_prompt = prompts.construir_sistema(nombre, edad, "Soy un ciudadano.", rasgo, origen, ideologia)
             mensajes_iniciales = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": "Inicia el juego describiendo la situación actual del personaje y su entorno en Argentina."}
+                {"role": "user", "content": "Inicia el juego describiendo la situación actual del personaje y su entorno en Argentina. Responde en JSON: {\"narrativa\": \"...\", \"efectos\": {}}"}
             ]
             
             with st.spinner("El Game Master está preparando el escenario..."):
                 respuesta_raw = prompts.llamar_llm(mensajes_iniciales, 0, "", es_inicio=True)
+                json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
                 
-                if respuesta_raw:
-                    json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                    narrativa_inicial = json_data.get("narrativa", "Bienvenido a LEGACY.")
-                else:
-                    narrativa_inicial = f"Bienvenido a LEGACY, {nombre} {apellido}. Tenés {edad} años y vivís en Argentina. Tu historia comienza ahora."
+                narrativa_inicial = json_data.get("narrativa", f"Bienvenido a LEGACY, {nombre} {apellido}. Tenés {edad} años y vivís en Argentina. Tu historia comienza ahora.")
                 
                 st.session_state.mensajes.append({"role": "assistant", "content": narrativa_inicial})
                 st.session_state.estado["titular_periodico"] = f"Comienza la era de la Dinastía {apellido}."
@@ -89,9 +94,13 @@ if not st.session_state.juego_iniciado:
             st.rerun()
     st.stop()
 
+# ==============================================================================
+# PANTALLA DE JUEGO (BUCLE PRINCIPAL)
+# ==============================================================================
 else:
     estado = st.session_state.estado
 
+    # --- GAME OVER ---
     if st.session_state.get("game_over"):
         st.error(st.session_state.game_over)
         st.subheader("⚰️ El Fin de una Era")
@@ -125,6 +134,7 @@ else:
                 st.rerun()
         st.stop()
 
+    # --- UI PRINCIPAL ---
     ui.render_cabecera(estado)
     ui.render_sidebar(estado)
 
@@ -132,9 +142,13 @@ else:
         "📰 Portada", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🎯 Objetivos", "🏆 Logros", "📊 Gráficos"
     ])
 
+    # =====================================================================
+    # PESTAÑA PORTADA (Chat principal)
+    # =====================================================================
     with tab_cronicas:
         ui.render_titular(estado)
 
+        # Tutorial inicial
         if not st.session_state.tutorial_visto:
             st.markdown("""
             <div style="background-color: #1a1d24; border-left: 5px solid #d4af37; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
@@ -155,11 +169,13 @@ else:
                 st.rerun()
             st.stop()
 
+        # Historial de chat
         with st.container(height=400):
             for msg in st.session_state.mensajes[-10:]:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
 
+        # Estados especiales
         if estado.get("hospitalizado"):
             st.warning("🏥 Estás hospitalizado. Debés recuperarte.")
             if st.button("🛌 Descansar 30 días", type="primary"):
@@ -182,53 +198,36 @@ else:
 
         st.divider()
 
+        # Input del chat
         accion = st.chat_input("Escribí tu acción... (ej: 'Estudiar política', 'Dar entrevista a Clarín')")
         
         if accion:
             st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
             
+            # 1. Intentar resolver con código puro (Action Router)
             es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
             
             if es_determinista:
-                narrativa_final = None
+                # La acción se ejecutó en código. Pedimos a la IA que la narre.
                 try:
                     contexto = prompts.generar_prompt_contexto(estado)
                     mensajes_chat = [
-                        {"role": "system", "content": f"Eres el narrador de LEGACY. El jugador hizo: {accion}. Resultado: {msg_determinista}. Narrá en 2-3 oraciones inmersivas lo que pasó. Responde SOLO con texto narrativo, sin JSON ni formato especial."},
+                        {"role": "system", "content": f"Eres el narrador de LEGACY. El jugador hizo: {accion}. Resultado mecánico: {msg_determinista}. Narrá en 2-3 oraciones inmersivas lo que pasó. Responde en JSON: {{\"narrativa\": \"texto\", \"efectos\": {{}}}}"},
                         {"role": "user", "content": f"Contexto: {contexto}"}
                     ]
                     respuesta_raw = prompts.llamar_llm(mensajes_chat, 0, "")
-                    
-                    if respuesta_raw and len(respuesta_raw.strip()) > 10:
-                        narrativa_final = respuesta_raw
+                    json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                    narrativa_final = json_data.get("narrativa", msg_determinista)
                 except Exception as e:
                     logger.warning(f"IA de narración falló: {e}")
-                
-                if not narrativa_final:
-                    narrativa_final = prompts.generar_narrativa_procedural(accion, msg_determinista, estado)
+                    narrativa_final = msg_determinista
                 
                 st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
                 estado["turno"] += 1
                 estado["energia"] = max(0, estado["energia"] - 10)
                 
-                objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
-                for obj_msg in objetivos_nuevos:
-                    st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
-                
-                evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
-                if evento_ocurrio:
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
-
-                acciones_rivales = mechanics.procesar_turno_rivales(estado)
-                for msg_rival in acciones_rivales:
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
-
-                nuevos_logros = mechanics.verificar_logros(estado)
-                for logro in nuevos_logros:
-                    st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
-                    
-                st.rerun()
             else:
+                # 2. Acción libre, la IA decide todo
                 with st.spinner("El Game Master está simulando..."):
                     contexto = prompts.generar_prompt_contexto(estado)
                     mensajes_chat = [
@@ -238,37 +237,39 @@ else:
                     ]
                     
                     respuesta_raw = prompts.llamar_llm(mensajes_chat, 7, "")
+                    json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
                     
-                    if respuesta_raw:
-                        json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                        estado, narrativa_final, game_over = mechanics.procesar_respuesta(
-                            json_data.get("narrativa", ""), 7, estado
-                        )
-                        st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
-                        if game_over:
-                            st.session_state.game_over = game_over
-                    else:
-                        narrativa_final = prompts.generar_narrativa_procedural(accion, "La situación permanece en calma.", estado)
-                        st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
-                        
-                    objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
-                    for obj_msg in objetivos_nuevos:
-                        st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
+                    estado, narrativa_final, game_over = mechanics.procesar_respuesta(
+                        json_data.get("narrativa", ""), 7, estado
+                    )
                     
-                    evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
-                    if evento_ocurrio:
-                        st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
+                    st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                    if game_over:
+                        st.session_state.game_over = game_over
+                    
+                    estado["turno"] += 1
+                    estado["energia"] = max(0, estado["energia"] - 10)
 
-                    acciones_rivales = mechanics.procesar_turno_rivales(estado)
-                    for msg_rival in acciones_rivales:
-                        st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
+            # --- MECÁNICAS DINÁMICAS POST-ACCIÓN ---
+            objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
+            for obj_msg in objetivos_nuevos:
+                st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
+            
+            evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
+            if evento_ocurrio:
+                st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
 
-                    nuevos_logros = mechanics.verificar_logros(estado)
-                    for logro in nuevos_logros:
-                        st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
+            acciones_rivales = mechanics.procesar_turno_rivales(estado)
+            for msg_rival in acciones_rivales:
+                st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
+
+            nuevos_logros = mechanics.verificar_logros(estado)
+            for logro in nuevos_logros:
+                st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
                 
-                st.rerun()
+            st.rerun()
 
+        # Botón para avanzar tiempo
         with st.expander("⏳ Dejar pasar el tiempo"):
             if st.button("⏭️ Avanzar 1 mes (Descansar)"):
                 estado["turno"] += 1
@@ -410,69 +411,13 @@ else:
     # PESTAÑA OBJETIVOS
     # =====================================================================
     with tab_objetivos:
-        st.subheader("🎯 Objetivos Dinásticos")
-        st.markdown("Completá objetivos para desbloquear bonificaciones permanentes para tu dinastía.")
-        st.divider()
-        
-        objetivos = estado.get("objetivos_dinasticos", [])
-        completados = estado.get("objetivos_completados", [])
-        bonificaciones = estado.get("bonificaciones_objetivos", [])
-        
-        if not objetivos:
-            st.info("No tenés objetivos dinásticos activos.")
-        else:
-            recompensas = {
-                "Alcanzar la Presidencia antes de los 55": {
-                    "nombre": "Mandato Legítimo",
-                    "desc": "Tu Aprobación Pública nunca puede bajar del 40%",
-                    "icono": "👑"
-                },
-                "Acumular $5M en patrimonio": {
-                    "nombre": "Magnate",
-                    "desc": "Tu próximo heredero empieza con +20 Negocios y $500K extra",
-                    "icono": "💰"
-                },
-                "Fundar una empresa Nivel 4": {
-                    "nombre": "Monopolio Familiar",
-                    "desc": "Todas tus empresas generan 25% más de dividendos",
-                    "icono": "🏢"
-                },
-                "Sobrevivir a 3 Crisis Nacionales": {
-                    "nombre": "Acero Templado",
-                    "desc": "Tu Salud Mental y Física no bajan por escándalos",
-                    "icono": "🛡️"
-                }
-            }
-            
-            for obj in objetivos:
-                if obj in completados:
-                    recompensa = recompensas.get(obj, {})
-                    st.success(f"✅ **{obj}**\n\n🌟 **Recompensa desbloqueada:** {recompensa.get('icono', '✨')} {recompensa.get('nombre', 'Bonus')} - {recompensa.get('desc', 'Bonificación especial')}")
-                else:
-                    st.markdown(f"⬜ **{obj}**\n\n*Completá este objetivo para desbloquear una bonificación permanente.*")
-            
-            if bonificaciones:
-                st.divider()
-                st.subheader("🌟 Bonificaciones Activas")
-                for bonif in bonificaciones:
-                    st.info(f"✨ **{bonif}**")
+        ui.render_tab_objetivos(estado)
 
     # =====================================================================
     # PESTAÑA LOGROS
     # =====================================================================
     with tab_logros:
-        st.subheader("🏆 Salón de Logros")
-        st.markdown("Desbloqueá logros cumpliendo desafíos a lo largo de tu dinastía.")
-        st.divider()
-        
-        logros_actuales = estado.get("logros", [])
-        
-        for logro_def in mechanics.LOGROS_DEFINICIONES:
-            is_unlocked = logro_def["id"] in logros_actuales
-            if is_unlocked:
-                st.success(f"✅ **{logro_def['nombre']}**: {logro_def['desc']}")
-            else:
-                st.markdown(f"🔒 **???**: {logro_def['desc']}")
+        ui.render_tab_logros(estado)
                 
     # =====================================================================
     # PESTAÑA GRÁFICOS
