@@ -140,6 +140,34 @@ else:
         ui.render_titular(estado)
         ui.render_objetivos(estado)
 
+        # =====================================================================
+        # TUTORIAL INICIAL (solo aparece la primera vez)
+        # =====================================================================
+        if not st.session_state.tutorial_visto:
+            st.markdown("""
+            <div style="background-color: #1a1d24; border-left: 5px solid #d4af37; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
+                <h3 style="color: #d4af37; margin-top: 0;">📖 Cómo jugar LEGACY</h3>
+                <p>Bienvenido a tu dinastía política. Acá tenés las acciones básicas para empezar:</p>
+                <ul>
+                    <li>💼 <b>Trabajar:</b> Escribí <i>"pedir aumento"</i> o <i>"buscar mejor empleo"</i> para subir tu sueldo.</li>
+                    <li>🏢 <b>Empresas:</b> Escribí <i>"fundar empresa tech"</i>, <i>"fundar inmobiliaria"</i> o <i>"fundar banco"</i> para crear tu imperio.</li>
+                    <li>📚 <b>Estudiar:</b> Escribí <i>"estudiar política"</i>, <i>"estudiar negocios"</i> o <i>"estudiar técnica"</i> para mejorar tus habilidades.</li>
+                    <li>🗳️ <b>Política:</b> Cuando tengas suficiente reputación, escribí <i>"postularme a diputado"</i> para entrar en política.</li>
+                    <li>📰 <b>Prensa:</b> Escribí <i>"dar entrevista a Clarín"</i> o <i>"comprar pauta en Página 12"</i> para influir en la opinión pública.</li>
+                    <li>⏳ <b>Tiempo:</b> Usá el botón <i>"Avanzar 1 mes"</i> para pasar el tiempo y cobrar tu sueldo.</li>
+                </ul>
+                <p><i>Podés escribir cualquier acción en lenguaje natural. El Game Master interpretará lo que querés hacer.</i></p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button("✅ Entendido, comenzar a jugar", type="primary"):
+                st.session_state.tutorial_visto = True
+                st.rerun()
+            st.stop()
+
+        # =====================================================================
+        # CHAT Y ACCIONES
+        # =====================================================================
         with st.container(height=400):
             for msg in st.session_state.mensajes[-10:]:
                 with st.chat_message(msg["role"]):
@@ -167,46 +195,125 @@ else:
 
         st.divider()
 
-        accion = st.chat_input("Escribí tu acción... (ej: 'Fundar empresa Tech', 'Estudiar política', 'Dar entrevista a Clarín')")
+        # =====================================================================
+        # BOTONES DE ACCIONES SUGERIDAS
+        # =====================================================================
+        st.markdown("**⚡ Acciones rápidas:**")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if st.button("🏢 Fundar empresa", use_container_width=True):
+                accion = "fundar empresa tech"
+                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
+                
+                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
+                
+                if es_determinista:
+                    # Intentar narrar con IA, pero con fallback al mensaje mecánico
+                    narrativa_final = msg_determinista
+                    try:
+                        contexto = prompts.generar_prompt_contexto(estado)
+                        mensajes_chat = [
+                            {"role": "system", "content": f"Eres el narrador de LEGACY. El jugador acaba de fundar una empresa. El resultado fue: {msg_determinista}. Narrá en 2-3 oraciones de forma inmersiva lo que pasó, como un periodista político. Responde SOLO con el texto narrativo, sin JSON ni formato especial."},
+                            {"role": "user", "content": f"Contexto: {contexto}"}
+                        ]
+                        respuesta_raw = prompts.llamar_llm(mensajes_chat, 0, "")
+                        # Si la respuesta es JSON, extraer narrativa; si no, usarla directo
+                        json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                        if json_data.get("narrativa") and json_data["narrativa"] != respuesta_raw:
+                            narrativa_final = json_data["narrativa"]
+                        elif len(respuesta_raw.strip()) > 20:
+                            narrativa_final = respuesta_raw
+                    except Exception as e:
+                        logger.warning(f"IA de narración falló, usando fallback: {e}")
+                    
+                    st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                    estado["turno"] += 1
+                    estado["energia"] = max(0, estado["energia"] - 10)
+                    st.rerun()
+                else:
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                    st.rerun()
+
+        with col2:
+            if st.button("📚 Estudiar política", use_container_width=True):
+                accion = "estudiar política"
+                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
+                
+                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
+                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                estado["turno"] += 1
+                estado["energia"] = max(0, estado["energia"] - 10)
+                st.rerun()
+
+        with col3:
+            if st.button("💼 Pedir aumento", use_container_width=True):
+                accion = "pedir aumento en el trabajo"
+                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
+                
+                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
+                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                estado["turno"] += 1
+                estado["energia"] = max(0, estado["energia"] - 10)
+                st.rerun()
+
+        with col4:
+            if st.button("🗳️ Postularme a Diputado", use_container_width=True):
+                accion = "postularme a diputado"
+                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
+                
+                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
+                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                estado["turno"] += 1
+                estado["energia"] = max(0, estado["energia"] - 10)
+                st.rerun()
+
+        st.divider()
+
+        # =====================================================================
+        # INPUT DE TEXTO LIBRE
+        # =====================================================================
+        accion = st.chat_input("Escribí tu acción... (ej: 'Fundar empresa', 'Estudiar política', 'Dar entrevista a Clarín')")
         
         if accion:
             st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
             
-            # 1. ROUTER DE ACCIONES (Código puro para los números)
             es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
             
             if es_determinista:
-                # La acción se ejecutó, ahora la IA narra lo que pasó
-                with st.spinner("El Game Master está narrando..."):
+                # La acción se ejecutó en código. Intentamos narrar con IA.
+                narrativa_final = msg_determinista
+                try:
                     contexto = prompts.generar_prompt_contexto(estado)
                     mensajes_chat = [
-                        {"role": "system", "content": prompts.construir_sistema(estado["nombre"], estado["edad"], "Historia...", estado["rasgo"], "Origen", estado["ideologia"])},
-                        {"role": "system", "content": f"CONTEXTO ACTUAL:\n{contexto}"},
-                        {"role": "user", "content": f"El jugador acaba de: {accion}. El resultado mecánico fue: {msg_determinista}. Narrá de forma inmersiva y detallada lo que acaba de pasar, como si fueras un narrador de House of Cards. Responde en formato JSON: {{\"narrativa\": \"tu narrativa aquí\", \"efectos\": {{}}}}"},
+                        {"role": "system", "content": f"Eres el narrador de LEGACY. El jugador hizo: {accion}. Resultado mecánico: {msg_determinista}. Narrá en 2-3 oraciones inmersivas lo que pasó. Responde SOLO con texto narrativo, sin JSON."},
+                        {"role": "user", "content": f"Contexto: {contexto}"}
                     ]
-                    
-                    respuesta_raw = prompts.llamar_llm(mensajes_chat, 7, "")
+                    respuesta_raw = prompts.llamar_llm(mensajes_chat, 0, "")
                     json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                    narrativa_final = json_data.get("narrativa", msg_determinista)
-                    
-                    st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
-                    
-                    # Avanzar tiempo y mecánicas dinámicas
-                    estado["turno"] += 1
-                    estado["energia"] = max(0, estado["energia"] - 10)
-                    
-                    evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
-                    if evento_ocurrio:
-                        st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
+                    if json_data.get("narrativa") and json_data["narrativa"] != respuesta_raw:
+                        narrativa_final = json_data["narrativa"]
+                    elif len(respuesta_raw.strip()) > 20 and "dificultades técnicas" not in respuesta_raw:
+                        narrativa_final = respuesta_raw
+                except Exception as e:
+                    logger.warning(f"IA de narración falló: {e}")
+                
+                st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                estado["turno"] += 1
+                estado["energia"] = max(0, estado["energia"] - 10)
+                
+                evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
+                if evento_ocurrio:
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
 
-                    acciones_rivales = mechanics.procesar_turno_rivales(estado)
-                    for msg_rival in acciones_rivales:
-                        st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
+                acciones_rivales = mechanics.procesar_turno_rivales(estado)
+                for msg_rival in acciones_rivales:
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
 
-                    nuevos_logros = mechanics.verificar_logros(estado)
-                    for logro in nuevos_logros:
-                        st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
-                        
+                nuevos_logros = mechanics.verificar_logros(estado)
+                for logro in nuevos_logros:
+                    st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
+                    
                 st.rerun()
             else:
                 # Acción no determinista, la IA decide todo
@@ -243,6 +350,9 @@ else:
                 
                 st.rerun()
 
+        # =====================================================================
+        # AVANZAR TIEMPO
+        # =====================================================================
         with st.expander("⏳ Dejar pasar el tiempo"):
             if st.button("⏭️ Avanzar 1 mes (Descansar)"):
                 estado["turno"] += 1
