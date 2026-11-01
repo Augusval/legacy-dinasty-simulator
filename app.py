@@ -83,7 +83,7 @@ if not st.session_state.get("juego_iniciado", False):
             "Gutiérrez", "Navarro", "Torres", "Domínguez", "Vázquez"
         ]
         st.session_state.nombre_inicial = random.choice(NOMBRES_PILA)
-        st.session_state.apellido_inicial = f"Dinastía {random.choice(APELLIDOS_ARGENTINOS)}"
+        st.session_state.apellido_inicial = random.choice(APELLIDOS_ARGENTINOS)
 
     with st.form("create_game"):
         nombre = st.text_input("Nombre:", value=st.session_state.nombre_inicial)
