@@ -1,635 +1,336 @@
-import os
-import json
-import random
 import streamlit as st
 import plotly.graph_objects as go
-import plotly.express as px
-import pandas as pd
-import mechanics
-from data import CRISIS_DECISIONES, TEMAS_DEBATE
+from entidades import Empresa, Hijo, Ministro, Medio, Rival
 
-CANDIDATOS_MINISTROS = [
-    "Lic. Marta Peña", "Dr. Julio Sáenz", "Ing. Lucía Ferreyra",
-    "Cp. Andrés Botto", "Ab. Carla Méndez", "Ec. Raúl Pintos",
-]
-
-PERSONALIDADES_LOCALES = ["Leal", "Rebelde", "Inútil", "Ambicioso"]
-
-STATS_0_100 = {
-    "opinion_publica", "estabilidad_pais", "produccion_industrial",
-    "reputacion", "aprobacion_publica",
-}
-
+# ==============================================================================
+# ESTILOS Y TEMA VISUAL (CSS)
+# ==============================================================================
 
 def inyectar_css():
-    st.markdown(
-        """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,700;1,300&family=Inter:wght@400;600;800&display=swap');
+    """Inyecta estilos CSS personalizados para dar el look 'House of Cards'."""
+    st.markdown("""
+    <style>
+        /* Fondo general y tipografía */
+        .stApp {
+            background-color: #0a0c10;
+            color: #e0e0e0;
+            font-family: 'Georgia', serif;
+        }
+        
+        /* Títulos dorados */
+        h1, h2, h3 {
+            color: #d4af37 !important;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        
+        /* Cajas de tutorial y alertas personalizadas */
+        .tutorial-box {
+            background-color: #1a1d24;
+            border-left: 5px solid #d4af37;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        
+        /* Botones primarios dorados */
+        .stButton>button {
+            background-color: #d4af37;
+            color: #0a0c10;
+            font-weight: bold;
+            border: none;
+            border-radius: 4px;
+        }
+        .stButton>button:hover {
+            background-color: #f1c40f;
+            color: #000;
+        }
+        
+        /* Chat input oscuro */
+        .stChatInput {
+            background-color: #1a1d24;
+            border: 1px solid #d4af37;
+        }
+        
+        /* Ocultar el menú de Streamlit y el footer para inmersión */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        
+        /* Métricas del sidebar */
+        .metric-label { font-size: 0.8em; color: #888; }
+        .metric-value { font-size: 1.2em; color: #fff; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
 
-/* Animaciones Keyframes */
-@keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-}
+# ==============================================================================
+# CABECERA PRINCIPAL
+# ==============================================================================
 
-@keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 10px rgba(230, 57, 70, 0.3); }
-    50% { box-shadow: 0 0 20px rgba(230, 57, 70, 0.6); }
-}
+def render_cabecera(estado: dict):
+    """Muestra el titular del periódico y la fecha actual."""
+    mes = int(estado.get("edad", 24) * 12) # Simulación simple de fecha
+    anio = 2026 + (mes // 12)
+    mes_nombre = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"][mes % 12]
+    
+    st.markdown(f"<div style='text-align: right; color: #888; font-size: 0.9em;'>{mes_nombre} {anio} | Turno {estado.get('turno', 0)}</div>", unsafe_allow_html=True)
+    
+    # Titular dinámico
+    titular = estado.get("titular_periodico", "La calma precede a la tormenta...")
+    st.markdown(f"""
+    <div style="background-color: #1a1d24; padding: 15px; border-top: 2px solid #e63946; border-bottom: 2px solid #e63946; margin-bottom: 20px;">
+        <h3 style="margin: 0; color: #fff; font-style: italic;">📰 {titular}</h3>
+    </div>
+    """, unsafe_allow_html=True)
 
-@keyframes slide-in {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
+# ==============================================================================
+# SIDEBAR (Panel de Estadísticas)
+# ==============================================================================
 
-.stApp { background: radial-gradient(circle at 50% 0%, #1a1e29 0%, #0a0c10 100%); color: #e2e8f0; }
-h1, h2, h3 { font-family: 'Inter', sans-serif !important; font-weight: 800; letter-spacing: -1px; color: #ffffff; }
+def render_sidebar(estado: dict):
+    """Renderiza todas las barras de progreso y stats en la barra lateral."""
+    with st.sidebar:
+        st.image("https://img.icons8.com/color/96/000000/crown.png", width=60) # Icono genérico de corona
+        st.title(f"Dinastía {estado.get('apellido_dinastia', '')}")
+        st.markdown(f"**{estado.get('nombre', '')}** | {estado.get('cargo_politico', 'Ciudadano')}")
+        st.divider()
 
-.titular { 
-    font-family: 'Merriweather', serif !important; 
-    font-size: 2.2rem; 
-    text-align: center; 
-    border-top: 2px solid #e63946;  
-    border-bottom: 2px solid #e63946; 
-    padding: 15px; 
-    margin-bottom: 25px; 
-    font-weight: 700; 
-    color: #e63946 !important; 
-    text-shadow: 0px 0px 10px rgba(230, 57, 70, 0.4);
-    animation: slide-in 0.5s ease-out;
-}
+        # --- Stats Personales ---
+        st.subheader("👤 Estado Personal")
+        col1, col2 = st.columns(2)
+        col1.metric("Edad", f"{int(estado.get('edad', 24))} años")
+        col2.metric("Dinero", f"${estado.get('dinero_personal', 0):,}")
+        
+        st.progress(estado.get("energia", 100) / 100, text=f"⚡ Energía: {estado.get('energia', 100)}%")
+        st.progress(estado.get("salud_fisica", 100) / 100, text=f"❤️ Salud Física: {estado.get('salud_fisica', 100)}%")
+        st.progress(estado.get("salud_mental", 100) / 100, text=f"🧠 Salud Mental: {estado.get('salud_mental', 100)}%")
+        
+        # --- Stats Políticos ---
+        st.subheader("🏛️ Poder e Influencia")
+        st.progress(estado.get("reputacion", 50) / 100, text=f"🎩 Reputación: {estado.get('reputacion', 50)}")
+        st.progress(estado.get("aprobacion_publica", 50) / 100, text=f"👍 Aprobación: {estado.get('aprobacion_publica', 50)}%")
+        
+        # Barra de Escándalo (Roja si es alta)
+        escandalo = estado.get("nivel_escandalo", 0)
+        color_escandalo = "#e63946" if escandalo > 50 else "#888"
+        st.markdown(f"<div style='color: {color_escandalo}; font-weight: bold;'>🚨 Nivel de Escándalo: {escandalo}%</div>", unsafe_allow_html=True)
+        st.progress(escandalo / 100)
 
-.cabecera-fecha { text-align: center; font-family: 'Inter', sans-serif; font-size: 1rem; color: #94a3b8; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+        st.divider()
 
-.stat-card { 
-    background: rgba(26, 30, 41, 0.7); 
-    border-left: 4px solid #e63946; 
-    border-radius: 8px; 
-    padding: 15px; 
-    margin-bottom: 10px; 
-    box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
-    display: flex; 
-    justify-content: space-between; 
-    align-items: center;
-    transition: transform 0.2s ease;
-}
-.stat-card:hover { transform: translateX(5px); }
-.stat-card .title { font-size: 0.9rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
-.stat-card .value { font-size: 1.5rem; font-family: 'Merriweather', serif; color: #fff; font-weight: 700; }
+        # --- Habilidades ---
+        st.subheader("📊 Habilidades")
+        st.progress(estado.get("habilidad_tecnica", 20) / 100, text=f"💻 Técnica: {estado.get('habilidad_tecnica', 20)}")
+        st.progress(estado.get("habilidad_politica", 20) / 100, text=f"🗳️ Política: {estado.get('habilidad_politica', 20)}")
+        st.progress(estado.get("habilidad_negocios", 20) / 100, text=f"💼 Negocios: {estado.get('habilidad_negocios', 20)}")
 
-.custom-progress-container { 
-    background-color: #1a1e29; 
-    border-radius: 10px; 
-    height: 12px; 
-    width: 100%; 
-    margin-bottom: 15px; 
-    overflow: hidden; 
-    border: 1px solid #333;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
-}
+        st.divider()
 
-.custom-progress-bar { 
-    height: 100%; 
-    border-radius: 10px; 
-    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-    background-size: 200% 100%;
-    animation: shimmer 3s linear infinite;
-}
+        # --- Facciones ---
+        st.subheader("🤝 Facciones")
+        facciones = estado.get("facciones", {})
+        for fac, val in facciones.items():
+            st.progress(val / 100, text=f"{fac}: {val}")
 
-.progress-label { font-size: 0.85rem; color: #cbd5e1; margin-bottom: 4px; display: flex; justify-content: space-between; }
+import plotly.graph_objects as go
 
-.stChatMessage { 
-    background-color: rgba(26, 30, 41, 0.8) !important; 
-    border: 1px solid #2a2f3a !important; 
-    border-left: 4px solid #e63946 !important; 
-    border-radius: 4px !important; 
-    padding: 1rem !important; 
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    animation: slide-in 0.3s ease-out;
-}
-.stChatMessage p { color: #e2e8f0 !important; }
+# ==============================================================================
+# PESTAÑAS DE CONTENIDO
+# ==============================================================================
 
-.stTextInput input { 
-    background-color: #1a1e29 !important; 
-    color: #fff !important; 
-    border: 1px solid #444 !important; 
-    border-radius: 6px !important;
-    transition: border-color 0.3s ease;
-}
-.stTextInput input:focus { border-color: #e63946 !important; }
-
-.stButton >button { 
-    background: linear-gradient(90deg, #e63946 0%, #b91d2b 100%) !important; 
-    color: white !important; 
-    border: none !important; 
-    border-radius: 6px !important; 
-    font-weight: 700 !important; 
-    box-shadow: 0 4px 10px rgba(230, 57, 70, 0.3); 
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    position: relative;
-    overflow: hidden;
-}
-.stButton >button:hover { 
-    transform: translateY(-2px) scale(1.02); 
-    box-shadow: 0 8px 20px rgba(230, 57, 70, 0.5);
-}
-.stButton >button:active {
-    transform: translateY(0) scale(0.98);
-}
-
-/* Tutorial Modal */
-.tutorial-box {
-    background: linear-gradient(135deg, rgba(26, 30, 41, 0.95) 0%, rgba(10, 12, 16, 0.95) 100%);
-    border: 2px solid #e63946;
-    border-radius: 12px;
-    padding: 25px;
-    margin: 20px 0;
-    box-shadow: 0 8px 32px rgba(230, 57, 70, 0.3);
-    animation: pulse-glow 2s ease-in-out infinite;
-}
-
-[data-testid="stSidebar"] { background-color: #050608 !important; border-right: 1px solid #1f2430; }
-[data-testid="stSidebar"] * { color: #cbd5e1 !important; }
-</style>
-""",
-        unsafe_allow_html=True,
-    )
-
-
-def render_cabecera(estado):
-    fecha = mechanics.fecha_legible(estado.get("mes_actual", 0))
-    dinastia = estado.get("apellido_dinastia", "") or "Sin Dinastía"
-    st.markdown(
-        f'<div class="cabecera-fecha">📅 {fecha} · 🏰 Dinastía {dinastia} · '
-        f"Generación {estado.get('generacion_actual', 1)} · {estado.get('cargo_politico')} · "
-        f"Ideología: {estado.get('ideologia', 'Centro')}</div>",
-        unsafe_allow_html=True,
-    )
-
-
-def render_titular(estado):
-    titular = estado.get("titular_periodico", "Edición de la mañana")
-    st.markdown(f'<div class="titular">{titular}</div>', unsafe_allow_html=True)
-
-
-def custom_progress(label, value, max_value, color="#e63946"):
-    percent = min(100, int((value / max_value) * 100)) if max_value > 0 else 0
-    st.markdown(
-        f"""
-        <div class="progress-label">
-            <span>{label}</span>
-            <span>{value} / {max_value}</span>
-        </div>
-        <div class="custom-progress-container">
-            <div class="custom-progress-bar" style="width: {percent}%; background-color: {color};"></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_resumen_turno(estado):
-    resumen = estado.get("resumen_ultimo_turno", [])
-    if resumen:
-        st.caption("📊 **Cambios del último turno:** " + " · ".join(resumen))
-
-
-def render_objetivos(estado):
-    objetivos = estado.get("objetivos_dinasticos", [])
-    if not objetivos:
+def render_tab_gobierno(estado: dict):
+    """Muestra el gabinete de ministros y sus estadísticas."""
+    st.subheader("🏛️ Gabinete de Gobierno")
+    ministros = estado.get("ministros", {})
+    
+    if not ministros:
+        st.info("📭 Aún no has nombrado ministros. Esta sección se desbloquea al asumir un cargo de poder.")
         return
-    with st.expander(f"🎯 Objetivos Dinásticos ({len(estado.get('objetivos_completados', []))}/{len(objetivos)} cumplidos)"):
-        for obj in objetivos:
-            if obj in estado.get("objetivos_completados", []):
-                st.success(f"✅ {obj}")
+        
+    for area, m in ministros.items():
+        # Manejo por si viene de un JSON viejo (dict) o de la nueva Dataclass
+        nombre = m.nombre if hasattr(m, 'nombre') else m.get('nombre', 'Desconocido')
+        eficiencia = m.eficiencia if hasattr(m, 'eficiencia') else m.get('eficiencia', 50)
+        lealtad = m.lealtad if hasattr(m, 'lealtad') else m.get('lealtad', 50)
+        corrupcion = m.corrupcion if hasattr(m, 'corrupcion') else m.get('corrupcion', 0)
+        
+        with st.expander(f"👤 {nombre} - Ministro de {area}"):
+            st.progress(eficiencia/100, text=f"⚙️ Eficiencia: {eficiencia}%")
+            st.progress(lealtad/100, text=f"🤝 Lealtad: {lealtad}%")
+            st.progress(corrupcion/100, text=f"💰 Corrupción: {corrupcion}%")
+            st.caption(f"Afinidad: {m.faccion_afin if hasattr(m, 'faccion_afin') else 'Independiente'}")
+
+def render_tab_empresas(estado: dict):
+    """Muestra las empresas fundadas y su progreso."""
+    st.subheader("🏢 Imperio Corporativo")
+    corporaciones = estado.get("corporaciones", {})
+    
+    if not corporaciones:
+        st.info("📉 No posees empresas. Escribí en el chat 'Fundar empresa' para comenzar tu imperio.")
+        return
+        
+    for key, emp in corporaciones.items():
+        nombre = emp.nombre if hasattr(emp, 'nombre') else emp.get('nombre', key)
+        nivel = emp.nivel if hasattr(emp, 'nivel') else emp.get('nivel', 1)
+        progreso = emp.progreso_nivel if hasattr(emp, 'progreso_nivel') else emp.get('progreso_nivel', 0)
+        
+        st.markdown(f"### {nombre}")
+        st.metric(label="Nivel Actual", value=f"Nivel {nivel}")
+        st.progress(progreso/100, text=f"Progreso al Nivel {nivel + 1}: {progreso}%")
+        st.divider()
+
+def render_tab_prensa(estado: dict):
+    """Muestra los medios de comunicación y su nivel de apoyo."""
+    st.subheader("📰 Medios de Comunicación")
+    medios = estado.get("medios", [])
+    
+    if not medios:
+        st.info("No hay medios operando.")
+        return
+        
+    for m in medios:
+        nombre = m.nombre if hasattr(m, 'nombre') else m.get('nombre', 'Medio')
+        apoyo = m.apoyo if hasattr(m, 'apoyo') else m.get('apoyo', 50)
+        postura = m.postura if hasattr(m, 'postura') else m.get('postura', 'Neutro')
+        
+        col1, col2, col3 = st.columns([3, 2, 1])
+        col1.markdown(f"**{nombre}**")
+        col2.caption(f"Postura: {postura}")
+        
+        # Color dinámico según apoyo
+        color = "green" if apoyo > 20 else ("red" if apoyo < -20 else "gray")
+        col3.markdown(f"<div style='color: {color}; font-weight: bold; text-align: right;'>Apoyo: {apoyo}</div>", unsafe_allow_html=True)
+
+def render_tab_rivales(estado: dict):
+    """Muestra los rivales políticos y sus secretos."""
+    st.subheader("⚔️ Rivales Políticos")
+    rivales = estado.get("rivales", [])
+    
+    if not rivales:
+        st.success("✨ No tenés rivales conocidos. ¡Disfrutá la calma!")
+        return
+        
+    for r in rivales:
+        nombre = r.nombre if hasattr(r, 'nombre') else r.get('nombre', 'Rival')
+        poder = r.poder if hasattr(r, 'poder') else r.get('poder', 30)
+        secretos = r.secretos if hasattr(r, 'secretos') else r.get('secretos', [])
+        
+        with st.expander(f"🕴️ {nombre} ({r.cargo if hasattr(r, 'cargo') else 'Opositor'})"):
+            st.progress(poder/100, text=f"Poder Político: {poder}%")
+            if secretos:
+                st.warning(f"🤫 **Secreto conocido:** {secretos[0]}")
             else:
-                st.info(f"⏳ {obj}")
+                st.info("No se conocen secretos de este rival.")
 
-
-def render_grafico_historico(estado):
-    if not estado.get("historial_aprobacion"):
-        st.info("No hay datos históricos aún.")
+def render_tab_vida(estado: dict):
+    """Muestra la familia y herederos."""
+    st.subheader("👨‍👩‍👧‍👦 Vida y Familia")
+    st.write(f"**Pareja:** {estado.get('pareja_nombre', 'Soltero/a')} (Afinidad: {estado.get('pareja_afinidad', 0)}%)")
+    st.divider()
+    
+    hijos = estado.get("hijos", [])
+    if not hijos:
+        st.info("Aún no tenés herederos.")
         return
+        
+    for h in hijos:
+        nombre = h.nombre if hasattr(h, 'nombre') else h.get('nombre', 'Hijo')
+        edad = h.edad if hasattr(h, 'edad') else h.get('edad', 0)
+        potencial = h.calcular_potencial_heredero() if hasattr(h, 'calcular_potencial_heredero') else 50
+        
+        col1, col2 = st.columns(2)
+        col1.metric(nombre, f"{edad} años")
+        col2.metric("Potencial de Heredero", f"{potencial}/100")
+
+def render_tab_archivo(estado: dict):
+    """Muestra el historial de memoria y noticias."""
+    st.subheader("📜 Archivo Histórico")
+    memoria = estado.get("memoria", [])
+    if not memoria:
+        st.info("El archivo está vacío.")
+    else:
+        for evento in reversed(memoria): # Mostrar los más recientes primero
+            st.markdown(f"- {evento}")
+
+def render_tab_graficos(estado: dict):
+    """Muestra el dashboard de métricas históricas con Plotly."""
+    st.subheader("📊 Métricas Históricas de la Dinastía")
+    
+    patrimonio = estado.get("historial_patrimonio", [])
+    aprobacion = estado.get("historial_aprobacion", [])
+    turnos = list(range(len(patrimonio)))
+    
+    if len(patrimonio) < 2:
+        st.info("📈 Se necesitan al menos 2 turnos de juego para generar el gráfico histórico.")
+        return
+
     fig = go.Figure()
+
     fig.add_trace(go.Scatter(
-        y=estado["historial_aprobacion"],
-        mode='lines+markers',
-        name='Aprobación Pública',
-        line=dict(color='#e63946', width=3)
+        x=turnos, y=patrimonio, 
+        name="Patrimonio Personal ($)", 
+        line=dict(color="#d4af37", width=3), 
+        yaxis="y1"
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=turnos, y=aprobacion, 
+        name="Aprobación Pública (%)", 
+        line=dict(color="#e63946", width=3, dash="dot"), 
+        yaxis="y2"
+    ))
+
+    fig.update_layout(
+        title="Evolución: Riqueza vs. Popularidad",
+        xaxis_title="Turnos (Meses)",
+        yaxis_title="Patrimonio ($)",
+        yaxis2=dict(title="Aprobación (%)", overlaying="y", side="right", range=[0, 100]),
+        template="plotly_dark",
+        hovermode="x unified",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+def render_mapa_electoral(estado: dict):
+    """Renderiza un mapa de calor simple de las provincias."""
+    st.subheader("🗺️ Mapa de Apoyo por Provincia")
+    mapa = estado.get("mapa_electoral", {})
+    if not mapa:
+        st.info("No hay datos electorales.")
+        return
+        
+    # Crear un gráfico de barras horizontales para simular el mapa de forma simple y efectiva
+    fig = go.Figure(go.Bar(
+        x=list(mapa.values()),
+        y=list(mapa.keys()),
+        orientation='h',
+        marker=dict(color='#d4af37')
     ))
     fig.update_layout(
-        title="Evolución Histórica (Últimos 20 turnos)",
-        xaxis_title="Turno",
-        yaxis_title="Porcentaje",
+        xaxis_title="% de Votos",
+        yaxis_title="Provincia",
         template="plotly_dark",
-        height=400,
-        showlegend=True,
-        plot_bgcolor='rgba(26, 30, 41, 0.7)',
-        paper_bgcolor='rgba(10, 12, 16, 0.7)',
+        height=400
     )
     st.plotly_chart(fig, use_container_width=True)
 
+# Funciones auxiliares de UI
+def render_titular(estado: dict):
+    st.markdown(f"### {estado.get('titular_periodico', 'Últimas noticias...')}")
 
-def render_mapa_electoral(estado):
-    mapa = estado.get("mapa_electoral", {})
-    if not mapa:
-        st.info("Aún no cerraste ninguna elección: cuando lo hagas, acá vas a ver el mapa de apoyo por provincia.")
-        return
-    df = pd.DataFrame({"provincia": list(mapa.keys()), "apoyo": list(mapa.values())})
-    geo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "argentina.geojson")
-    if os.path.exists(geo_path):
-        with open(geo_path, encoding="utf-8") as f:
-            geo = json.load(f)
-        fig = px.choropleth(
-            df, geojson=geo, locations="provincia", featureidkey="properties.name",
-            color="apoyo", range_color=(0, 100), color_continuous_scale="RdBu_r",
-            labels={"apoyo": "% de apoyo"},
-        )
-        fig.update_layout(
-            template="plotly_dark", height=500,
-            margin={"l": 0, "r": 0, "t": 40, "b": 0},
-            title="Mapa Electoral por Provincia",
-            paper_bgcolor='rgba(10, 12, 16, 0.7)',
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        fig = px.bar(df, x="provincia", y="apoyo", template="plotly_dark", color="apoyo",
-                     color_continuous_scale="RdBu_r", labels={"apoyo": "% de apoyo", "provincia": "Provincia"})
-        fig.update_layout(title="Apoyo por Provincia (última elección)", height=400)
-        st.plotly_chart(fig, use_container_width=True)
-        st.caption("💡 Tip: colocá un archivo `argentina.geojson` en la carpeta del juego para ver el mapa real en vez de barras.")
+def render_resumen_turno(estado: dict):
+    resumen = estado.get("resumen_ultimo_turno", [])
+    if resumen:
+        st.info("📝 **Resumen del último turno:**\n" + "\n".join(resumen))
 
-
-def render_sidebar(estado, mechanics_mod):
-    with st.sidebar:
-        st.title("EL DIARIO")
-
-        # --- TARJETAS PRINCIPALES ---
-        st.markdown(
-            f"""
-            <div class="stat-card">
-                <span class="title">Fondos</span>
-                <span class="value">${estado.get('dinero_personal', 0):,}</span>
-            </div>
-            <div class="stat-card">
-                <span class="title">Edad</span>
-                <span class="value">{int(estado.get('edad', 24))} años</span>
-            </div>
-            <div class="stat-card">
-                <span class="title">Sueldo</span>
-                <span class="value" style="font-size: 1rem;">${estado.get('ingreso_mensual', 0):,}/mes</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        # --- TESORO NACIONAL (solo si es Presidente) ---
-        if estado.get("cargo_politico") == "Presidente":
-            st.divider()
-            st.markdown("**🏦 Tesoro Nacional**")
-            st.markdown(
-                f"""
-                <div class="stat-card">
-                    <span class="title">Arcas del Estado</span>
-                    <span class="value" style="font-size: 1.1rem;">${estado.get('tesoro_nacional', 0):,}</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.caption(f"Inflación: {estado.get('inflacion', 0):.1f}%")
-
-        st.divider()
-
-        # --- BARRAS DE ESTADO ---
-        custom_progress("🔋 Energía", estado.get("energia", 50), estado.get("energia_max", 100), "#3b82f6")
-        custom_progress("⭐ Reputación", estado.get("reputacion", 50), 100, "#f59e0b")
-        custom_progress("🚨 Corrupción", estado.get("nivel_corrupcion", 0), 100, "#e63946")
-        custom_progress("📰 Escándalo", estado.get("escandalo_acumulado", 0), 100, "#dc2626")
-
-        st.divider()
-
-        # --- SALUD ---
-        st.markdown("**🫀 Salud**")
-        custom_progress("🫀 Física", estado.get("salud_fisica", 90), 100, "#ef4444")
-        custom_progress("🧠 Mental", estado.get("salud_mental", 80), 100, "#a855f7")
-
-        st.divider()
-
-        # --- HABILIDADES ---
-        st.markdown("**📊 Habilidades**")
-        custom_progress("💻 Técnica", estado.get("habilidad_tecnica", 10), 100, "#10b981")
-        custom_progress("🗣️ Política", estado.get("habilidad_politica", 10), 100, "#8b5cf6")
-        custom_progress("💼 Negocios", estado.get("habilidad_negocios", 10), 100, "#f97316")
-
-        st.divider()
-
-        # --- FACCIONES (siempre visibles) ---
-        st.markdown("**⚖️ Facciones**")
-        facciones = estado.get("facciones", {})
-        custom_progress("🎖️ Militares", facciones.get("Militares", 50), 100, "#64748b")
-        custom_progress("✊ Sindicatos", facciones.get("Sindicatos", 50), 100, "#f97316")
-        custom_progress("⛪ Iglesia", facciones.get("Iglesia", 50), 100, "#a855f7")
-        custom_progress("💼 Empresarios", facciones.get("Empresarios", 50), 100, "#10b981")
-
-        # --- RELACIONES INTERNACIONALES (solo si es Presidente) ---
-        if estado.get("cargo_politico") == "Presidente":
-            st.divider()
-            st.markdown("**🌍 Relaciones Internacionales**")
-            relaciones = estado.get("relaciones_internacionales", {})
-            custom_progress("🇺🇸 EE.UU.", relaciones.get("EE.UU.", 50), 100, "#3b82f6")
-            custom_progress("🇨🇳 China", relaciones.get("China", 50), 100, "#ef4444")
-            custom_progress("🇧🇷 Brasil", relaciones.get("Brasil", 50), 100, "#22c55e")
-
-        # --- LOGROS ---
-        st.divider()
-        if estado.get("logros"):
-            st.markdown("**🏆 Logros**")
-            for logro in estado["logros"][-3:]:
-                st.success(f"✓ {logro}")
-
-        # --- GUARDAR / CARGAR ---
-        st.divider()
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("💾 Guardar", use_container_width=True):
-                mechanics_mod.save_to_disk()
-        with col2:
-            if st.button("📂 Cargar", use_container_width=True):
-                if mechanics_mod.load_from_disk():
-                    st.rerun()
-
-        st.markdown("**Slots de Guardado:**")
-        for i in range(3):
-            if st.button(f"Slot {i+1}", use_container_width=True, key=f"slot_{i}"):
-                if mechanics_mod.load_from_slot(i):
-                    st.rerun()
-
-
-def render_tab_gobierno(estado):
-    if estado.get("cargo_politico") != "Presidente":
-        st.info("Llegá a la Presidencia para gestionar el Gabinete, Leyes y Diplomacia.")
-        return
-    st.subheader("Despacho Presidencial")
-
-    # --- RESUMEN DE TESORERÍA ---
-    st.markdown("### 🏦 Estado de la Nación")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Tesoro Nacional", f"${estado.get('tesoro_nacional', 0):,}")
-    col2.metric("Inflación", f"{estado.get('inflacion', 0):.1f}%")
-    col3.metric("Estabilidad", f"{estado.get('estabilidad_pais', 0)}/100")
-    col4.metric("Aprobación", f"{estado.get('aprobacion_publica', 0)}/100")
-
-    st.markdown("### 👔 Gabinete de Ministros")
-    for cargo, m in estado["ministros"].items():
-        st.write(f"**{cargo}:** {m['nombre']} (Lealtad: {m['lealtad']}%, Corrupción: {m['corrupcion']}%)")
-        if m["nombre"] != "Vacante" and m["lealtad"] <= 20:
-            st.warning(f"⚠️ {m['nombre']} está al borde de la traición. Despedilo o negociá.")
-        if m["nombre"] == "Vacante":
-            candidato = st.selectbox(f"Candidato para {cargo}:", CANDIDATOS_MINISTROS, key=f"cand_{cargo}")
-            if st.button(f"Nombrar a {candidato}", key=f"nombrar_{cargo}"):
-                st.session_state.estado["ministros"][cargo] = {
-                    "nombre": candidato,
-                    "lealtad": 60,
-                    "corrupcion": random.randint(0, 20),
-                }
-                mechanics.agregar_memoria(st.session_state.estado, f"{candidato} asumió como ministro de {cargo}.")
-                st.rerun()
-        else:
-            if st.button(f"Despedir a Ministro de {cargo}", key=f"despedir_{cargo}"):
-                st.session_state.estado["ministros"][cargo] = {
-                    "nombre": "Vacante",
-                    "lealtad": 50,
-                    "corrupcion": 0,
-                }
-                st.rerun()
-
-    st.markdown("### ⚖️ Leyes Polémicas")
-    ideologia = estado.get("ideologia", "Centro")
-    for ley in mechanics.LEYES:
-        if ley["nombre"] in estado["leyes_aprobadas"]:
-            st.success(f"✅ {ley['nombre']} (aprobada)")
-            continue
-        mult = 1 if ley["afinidad"] == ideologia else 2
-        faccion, costo = ley["costo"]
-        costo_final = costo * mult
-        etiqueta_afin = "afín a tu ideología" if mult == 1 else "CONTRA tu ideología (costo doble)"
-        if st.button(
-            f"Aprobar {ley['nombre']} ({ley['afinidad']}, {etiqueta_afin}) → -{costo_final} {faccion}",
-            key=f"ley_{ley['nombre']}",
-        ):
-            clave, delta = ley["efecto"]
-            actual = st.session_state.estado.get(clave, 0) + delta
-            if clave in STATS_0_100:
-                actual = max(0, min(100, actual))
-            st.session_state.estado[clave] = actual
-            st.session_state.estado["facciones"][faccion] = max(
-                0, st.session_state.estado["facciones"][faccion] - costo_final
-            )
-            if mult == 1:
-                st.session_state.estado["opinion_publica"] = min(
-                    100, st.session_state.estado["opinion_publica"] + 5
-                )
-            st.session_state.estado["leyes_aprobadas"].append(ley["nombre"])
-            mechanics.agregar_memoria(st.session_state.estado, f"Se aprobó la ley {ley['nombre']}.")
-            st.rerun()
-
-    st.markdown("### 🌍 Geopolítica")
-    if not estado.get("prestamo_fmi"):
-        if st.button("Pedir Préstamo al FMI (+$10M, +Deuda)", key="fmi"):
-            st.session_state.estado["tesoro_nacional"] += 10000000
-            st.session_state.estado["prestamo_fmi"] = True
-            st.session_state.estado["relaciones_internacionales"]["EE.UU."] = min(
-                100, st.session_state.estado["relaciones_internacionales"]["EE.UU."] + 10
-            )
-            st.rerun()
-    if st.button("Tratado Comercial con China (+$5M, -10 Sindicatos)", key="china_tratado"):
-        st.session_state.estado["tesoro_nacional"] += 5000000
-        st.session_state.estado["facciones"]["Sindicatos"] = max(0, st.session_state.estado["facciones"]["Sindicatos"] - 10)
-        st.rerun()
-
-    st.markdown("### 🏗️ Megaobras Nacionales")
-    if estado.get("megaobras_activas"):
-        for obra in estado["megaobras_activas"]:
-            st.info(f"🚧 **En construcción:** {obra['nombre']} (Faltan {obra['turnos']} meses)")
-    for fila in range(0, len(mechanics.MEGAOBRAS), 3):
-        cols = st.columns(3)
-        for i, obra in enumerate(mechanics.MEGAOBRAS[fila:fila + 3]):
-            with cols[i]:
-                if st.button(f"{obra['nombre']} (${obra['costo'] // 1000000}M)", key=f"obra_{obra['nombre']}"):
-                    if estado.get("tesoro_nacional", 0) >= obra["costo"]:
-                        st.session_state.estado["tesoro_nacional"] -= obra["costo"]
-                        st.session_state.estado["megaobras_activas"].append(dict(obra))
-                        st.rerun()
-                    else:
-                        st.error("Tesoro insuficiente.")
-
-
-def render_tab_vida(estado):
-    st.subheader("Vida Personal y Familia")
-    if estado.get("hospitalizado"):
-        st.error("🏥 **Estás hospitalizado.** Recuperate desde la pestaña Portada antes de hacer vida social.")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("### ❤️ Romance")
-        if estado.get("pareja_nombre") == "Nadie":
-            gen_jugador = estado.get("genero", "Masculino")
-            gen_pareja = "Femenino" if gen_jugador == "Masculino" else "Masculino"
-            st.info(f"Buscás una pareja del género **{gen_pareja}**.")
-            with st.form("form_pareja"):
-                nombre_p = st.text_input("Ingresá el nombre de tu pareja:")
-                submit_p = st.form_submit_button("Conocer a esta persona")
-                if submit_p:
-                    if nombre_p.strip():
-                        st.session_state.estado["pareja_nombre"] = nombre_p.strip()
-                        st.session_state.estado["pareja_genero"] = gen_pareja
-                        st.session_state.estado["pareja_afinidad"] = 50
-                        st.rerun()
-                    else:
-                        st.error("Por favor, ingresá un nombre.")
-        else:
-            st.write(f"Estás en pareja con **{estado['pareja_nombre']}** ({estado.get('pareja_genero', '')}).")
-            if st.button("Tener un Hijo"):
-                nombre_h = mechanics.generar_nombre_hijo(
-                    estado.get("apellido_dinastia", ""), estado.get("hijos", [])
-                )
-                personalidad = random.choice(PERSONALIDADES_LOCALES)
-                st.session_state.estado["hijos"].append(nombre_h)
-                st.session_state.estado["hijos_edad"][nombre_h] = 0
-                st.session_state.estado["hijos_educacion"][nombre_h] = "Pública"
-                st.session_state.estado["hijos_personalidad"][nombre_h] = personalidad
-                mechanics.agregar_memoria(st.session_state.estado, f"Nació {nombre_h} ({personalidad}).")
-                st.success(f"¡Nació {nombre_h}! Personalidad: {personalidad}")
-                st.rerun()
-    with col2:
-        st.markdown("### 👨‍👩‍ Hijos")
-        if not estado.get("hijos"):
-            st.info("No tenés hijos.")
-        else:
-            for idx, hijo in enumerate(estado["hijos"]):
-                edad_h = int(estado["hijos_edad"].get(hijo, 0))
-                edu = estado["hijos_educacion"].get(hijo, "Pública")
-                pers = estado["hijos_personalidad"].get(hijo, "Leal")
-                st.write(f"**{hijo}** ({edad_h} años) - Educación: {edu} - Personalidad: {pers}")
-                if edad_h >= 5 and edu == "Pública":
-                    if st.button(f"Pagar Colegio Privado para {hijo} ($50k)", key=f"edu_{idx}"):
-                        if estado.get("dinero_personal", 0) >= 50000:
-                            st.session_state.estado["dinero_personal"] -= 50000
-                            st.session_state.estado["hijos_educacion"][hijo] = "Privada"
-                            st.success(f"{hijo} ahora va a un colegio privado.")
-                            st.rerun()
-                if edad_h >= 18:
-                    st.caption("🎓 Mayor de edad: podría continuar la dinastía.")
-                if estado.get("hijo_heredero") == hijo:
-                    st.caption("👑 Heredero designado")
-                elif st.button(f"Nombrar {hijo} como heredero", key=f"heredero_{idx}"):
-                    st.session_state.estado["hijo_heredero"] = hijo
-                    st.success(f"{hijo} será tu heredero.")
-                    st.rerun()
-
-
-def render_tab_empresas(estado):
-    st.subheader("Imperio Corporativo")
-    st.write("Fundá empresas y cobrá dividendos pasivos cada mes.")
-    if estado.get("corporaciones"):
-        for emp, poder in estado["corporaciones"].items():
-            c1, c2 = st.columns([3, 1])
-            c1.write(f"🏢 **{emp}** (Poder: {poder}%)")
-            if c2.button("💸 Invertir $50k", key=f"inv_{emp}"):
-                if estado.get("dinero_personal", 0) >= 50000:
-                    st.session_state.estado["dinero_personal"] -= 50000
-                    st.session_state.estado["corporaciones"][emp] = min(100, poder + 10)
-                    st.success(f"Invertiste en {emp}. Subió al {min(100, poder + 10)}%.")
-                    st.rerun()
-                else:
-                    st.error("No tenés $50k.")
-    else:
-        st.info("Aún no tenés empresas.")
-    st.divider()
-    st.markdown("### 🏗️ Fundar Nueva Empresa")
-    with st.form("form_nueva_empresa"):
-        nombre_emp = st.text_input("Nombre de la corporación:")
-        submit = st.form_submit_button("Fundar Empresa ($100k)")
-        if submit:
-            if not nombre_emp.strip():
-                st.error("Poné un nombre.")
-            elif estado.get("dinero_personal", 0) < 100000:
-                st.error("No tenés los $100k iniciales.")
-            elif nombre_emp in estado.get("corporaciones", {}):
-                st.error("Ya tenés una empresa con ese nombre.")
+def render_objetivos(estado: dict):
+    objetivos = estado.get("objetivos_dinasticos", [])
+    completados = estado.get("objetivos_completados", [])
+    if objetivos:
+        st.markdown("**🎯 Objetivos Dinásticos:**")
+        for obj in objetivos:
+            if obj in completados:
+                st.success(f"✅ {obj}")
             else:
-                st.session_state.estado["dinero_personal"] -= 100000
-                st.session_state.estado["corporaciones"][nombre_emp] = 10
-                st.success(f"¡Fundaste {nombre_emp}!")
-                st.rerun()
-
-
-def render_tab_rivales(estado):
-    st.subheader("🎭 Rivales Políticos")
-    if not estado.get("rivales"):
-        st.info("No tenés rivales identificados aún.")
-        return
-    st.caption("Los rivales con relación baja te atacan cada turno según su poder. Con relación alta, te respaldan.")
-
-    if estado.get("negociacion_activa"):
-        neg = estado["negociacion_activa"]
-        st.divider()
-        st.error(f"🎮 **NEGOCIACIÓN CON {neg.get('rival_nombre', 'UN RIVAL')}**")
-        st.write(neg.get("propuesta", ""))
-        cols = st.columns(len(neg.get("opciones", [])))
-        for i, opcion in enumerate(neg.get("opciones", [])):
-            if cols[i].button(opcion["texto"], key=f"neg_op_{i}"):
-                for efecto, valor in opcion["efecto"].items():
-                    if efecto == "poder_rival":
-                        for r in st.session_state.estado["rivales"]:
-                            if r["nombre"] == neg["rival_nombre"]:
-                                r["poder"] = max(0, r["poder"] + valor)
-                    elif efecto == "poder_jugador":
-                        st.session_state.estado["reputacion"] = min(100, st.session_state.estado["reputacion"] + valor)
-                    elif efecto == "relacion":
-                        for r in st.session_state.estado["rivales"]:
-                            if r["nombre"] == neg["rival_nombre"]:
-                                r["relacion"] = max(0, min(100, r["relacion"] + valor))
-                    elif efecto == "dinero":
-                        st.session_state.estado["dinero_personal"] += valor
-                    elif efecto == "corrupcion":
-                        st.session_state.estado["nivel_corrupcion"] = min(100, st.session_state.estado["nivel_corrupcion"] + valor)
-                    elif efecto == "reputacion":
-                        st.session_state.estado["reputacion"] = max(0, st.session_state.estado["reputacion"] + valor)
-                st.session_state.estado["negociacion_activa"] = {}
-                st.rerun()
-        return
-
-    for idx, rival in enumerate(estado["rivales"]):
-        with st.container():
-            col1, col2 = st.columns([3, 1])
-            col1.markdown(f"**{rival['nombre']}** — {rival['cargo']}")
-            col1.markdown(f"Relación: {rival['relacion']}% | Poder: {rival['poder']}%")
-            if rival["relacion"] < 40:
-                col1.warning("⚠️ Hostil: puede atacarte.")
-            elif rival["relacion"] > 70:
-                col1.success("🤝 Aliado: puede respaldarte.")
-            if col2.button("🤝 Negociar (Mini-juego)", key=f"negociar_{idx}"):
-                propuesta = mechanics.generar_negociacion_rival(rival)
-                st.session_state.estado["negociacion_activa"] = {
-                    "rival_nombre": rival["nombre"],
-                    "propuesta": propuesta["texto"],
-                    "opciones": propuesta["opciones"],
-                }
-                st.rerun()
-
-
-def render_tab_archivo(estado):
-    st.subheader("📚 Archivo Histórico")
-    if not estado.get("archivo_noticias"):
-        st.info("No hay noticias archivadas aún.")
-        return
-    st.markdown("**Últimas 20 noticias:**")
-    for noticia in estado["archivo_noticias"][:20]:
-        with st.expander(f"Turno {noticia['turno']}: {noticia['titulo']}"):
-            st.write(noticia['narrativa'])
-
-
-def render_tab_graficos(estado):
-    st.subheader("📈 Evolución Histórica")
-    render_grafico_historico(estado)
+                st.markdown(f"⬜ {obj}")
