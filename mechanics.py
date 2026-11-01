@@ -505,32 +505,28 @@ def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bo
     
     logger.info(f"Procesando acción: '{t}'")
     
-    if "fundar" in t and "empresa" in t:
-        tipo = "Consultora"
-        if "tech" in t or "startup" in t or "tecnología" in t: 
-            tipo = "Tech Startup"
-        elif "inmobiliaria" in t or "casa" in t or "inmueble" in t: 
-            tipo = "Inmobiliaria"
-        elif "banco" in t or "financiera" in t or "banca" in t: 
-            tipo = "Banco"
+    # 1. Detectar fundación de empresas (con o sin la palabra "empresa")
+    if "fundar" in t or "crear" in t or "abrir" in t:
+        tipo = None
         
-        logger.info(f"Intentando fundar empresa tipo: {tipo}")
-        ok, msg = intentar_fundar_empresa(estado, tipo)
-        return ok, msg
-
-    if ("crear" in t or "abrir" in t) and ("empresa" in t or "negocio" in t or "compañía" in t):
-        tipo = "Consultora"
-        if "tech" in t or "startup" in t: 
+        if "consultora" in t:
+            tipo = "Consultora"
+        elif "tech" in t or "startup" in t or "tecnología" in t or "tecnologia" in t:
             tipo = "Tech Startup"
-        elif "inmobiliaria" in t: 
+        elif "inmobiliaria" in t or "casa" in t or "inmueble" in t:
             tipo = "Inmobiliaria"
-        elif "banco" in t: 
+        elif "banco" in t or "financiera" in t or "banca" in t:
             tipo = "Banco"
-        
-        ok, msg = intentar_fundar_empresa(estado, tipo)
-        return ok, msg
+        elif "empresa" in t or "negocio" in t or "compañía" in t or "compania" in t:
+            tipo = "Consultora"  # Default si dice "fundar empresa" a secas
+            
+        if tipo:
+            logger.info(f"Intentando fundar empresa tipo: {tipo}")
+            ok, msg = intentar_fundar_empresa(estado, tipo)
+            return ok, msg
 
-    if "estudiar" in t or "capacitarse" in t or "aprender" in t:
+    # 2. Detectar estudiar
+    if "estudiar" in t or "capacitarse" in t or "aprender" in t or "curso" in t:
         enfoque = "tecnica"
         if "politica" in t or "oratoria" in t or "política" in t: 
             enfoque = "politica"
@@ -540,10 +536,12 @@ def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bo
         ok, msg = intentar_estudiar(estado, enfoque)
         return ok, msg
 
+    # 3. Detectar mejorar vivienda
     if "mudar" in t or "mejorar vivienda" in t or "comprar casa" in t or "mudarse" in t:
         ok, msg = intentar_mejorar_vivienda(estado)
         return ok, msg
 
+    # 4. Detectar interacción con prensa
     if "pauta" in t or "entrevista" in t or "publicidad" in t:
         medio_nombre = None
         for m in estado.get("medios", []):
