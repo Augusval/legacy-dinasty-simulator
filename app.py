@@ -4,7 +4,7 @@ import prompts
 import mechanics
 import ui
 from state import parse_estado, IDEOLOGIAS, OBJETIVOS_DINASTICOS
-from data import CRISIS_DECISIONES, TEMAS_DEBATE
+from data import CRISIS_DECISIONES, TEMAS_DEBATE, NOMBRES_PILA
 
 st.set_page_config(page_title="LEGACY", layout="wide", page_icon="📰")
 ui.inyectar_css()
@@ -75,8 +75,16 @@ if not st.session_state.get("juego_iniciado", False):
                 )
 
     with st.form("create_game"):
-        nombre = st.text_input("Nombre:", value="Augusto Valentini")
-        apellido = st.text_input("Apellido de la Dinastía:", value="Valentini")
+        # Lista de apellidos argentinos comunes
+        APELLIDOS_ARGENTINOS = [
+            "González", "Rodríguez", "Gómez", "Fernández", "López", 
+            "Martínez", "Sánchez", "Pérez", "García", "Romero", 
+            "Díaz", "Álvarez", "Moreno", "Muñoz", "Alonso", 
+            "Gutiérrez", "Navarro", "Torres", "Domínguez", "Vázquez"
+        ]
+        
+        nombre = st.text_input("Nombre:", value=random.choice(NOMBRES_PILA))
+        apellido = st.text_input("Apellido de la Dinastía:", value=f"{random.choice(APELLIDOS_ARGENTINOS)}")
         genero = st.selectbox("Género del personaje:", ["Masculino", "Femenino"])
         origen = st.selectbox("Origen:", ["Técnico", "Político", "Comerciante"])
         ideologia = st.selectbox("Ideología Política:", IDEOLOGIAS)
