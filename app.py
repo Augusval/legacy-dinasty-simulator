@@ -74,17 +74,20 @@ if not st.session_state.get("juego_iniciado", False):
                     f"{entry['puntos']:,} pts · {entry['generaciones']} gen. · {entry['cargo']}"
                 )
 
-    with st.form("create_game"):
-        # Lista de apellidos argentinos comunes
+    # Generar nombres aleatorios UNA SOLA VEZ al cargar la pantalla
+    if "nombre_inicial" not in st.session_state:
         APELLIDOS_ARGENTINOS = [
             "González", "Rodríguez", "Gómez", "Fernández", "López", 
             "Martínez", "Sánchez", "Pérez", "García", "Romero", 
             "Díaz", "Álvarez", "Moreno", "Muñoz", "Alonso", 
             "Gutiérrez", "Navarro", "Torres", "Domínguez", "Vázquez"
         ]
-        
-        nombre = st.text_input("Nombre:", value=random.choice(NOMBRES_PILA))
-        apellido = st.text_input("Apellido de la Dinastía:", value=f"{random.choice(APELLIDOS_ARGENTINOS)}")
+        st.session_state.nombre_inicial = random.choice(NOMBRES_PILA)
+        st.session_state.apellido_inicial = f"Dinastía {random.choice(APELLIDOS_ARGENTINOS)}"
+
+    with st.form("create_game"):
+        nombre = st.text_input("Nombre:", value=st.session_state.nombre_inicial)
+        apellido = st.text_input("Apellido de la Dinastía:", value=st.session_state.apellido_inicial)
         genero = st.selectbox("Género del personaje:", ["Masculino", "Femenino"])
         origen = st.selectbox("Origen:", ["Técnico", "Político", "Comerciante"])
         ideologia = st.selectbox("Ideología Política:", IDEOLOGIAS)
@@ -103,6 +106,12 @@ if not st.session_state.get("juego_iniciado", False):
         )
 
         if st.form_submit_button("Comenzar", type="primary"):
+            # Limpiamos las variables para que la PRÓXIMA partida tenga nombres nuevos
+            if "nombre_inicial" in st.session_state:
+                del st.session_state.nombre_inicial
+            if "apellido_inicial" in st.session_state:
+                del st.session_state.apellido_inicial
+            
             st.session_state.juego_iniciado = True
             st.session_state.game_over = None
             st.session_state.mensajes = []
