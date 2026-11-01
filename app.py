@@ -14,37 +14,30 @@ MAX_MENSAJES_CHAT = 8
 
 def procesar_accion_jugador(texto):
     """Procesa una acción del jugador, valida intención y actualiza el estado."""
-    # 1. Validación básica contra inyección de prompts
     ok, motivo = mechanics.sanitizar_accion(texto)
     if not ok:
         st.error(motivo)
         return
 
-    # 2. Clasificación semántica de intención con IA
     intencion = prompts.clasificar_intencion(texto)
     if not intencion.get("es_valida", True):
         st.warning("🚫 Acción inválida: El Game Master no entiende esa acción o rompe las reglas del mundo.")
         return
 
-    # 3. Agregar la acción al chat
     st.session_state.mensajes.append({"role": "user", "content": f"🎯 Tu acción: {texto}"})
 
-    # 4. Llamar al Game Master y procesar la respuesta (capturando los 3 valores)
     with st.spinner("El Game Master está simulando..."):
         res = prompts.llamar_llm([{"texto": texto}], 7, " ")
         nuevo_estado, narrativa, game_over = mechanics.procesar_respuesta(
             res, 7, [{"texto": texto}], es_inicio=False, estado=st.session_state.estado
         )
         
-        # 5. Actualizar el estado y el chat
         st.session_state.estado = nuevo_estado
         st.session_state.mensajes.append({"role": "assistant", "content": narrativa})
         
-        # 6. Si hay game over, lo guardamos
         if game_over:
             st.session_state.game_over = game_over
         
-        # 7. Detectar nuevos logros y objetivos completados
         logros_anteriores = set(st.session_state.estado.get("logros", []))
         logros_nuevos = set(nuevo_estado.get("logros", [])) - logros_anteriores
         if logros_nuevos:
@@ -89,6 +82,7 @@ if not st.session_state.get("juego_iniciado", False):
         nombre = st.text_input("Nombre:", value=st.session_state.nombre_inicial)
         apellido = st.text_input("Apellido de la Dinastía:", value=st.session_state.apellido_inicial)
         genero = st.selectbox("Género del personaje:", ["Masculino", "Femenino"])
+        edad = st.number_input("Edad inicial:", min_value=18, max_value=65, value=24, step=1, help="Empezar mayor te da más habilidades iniciales, pero menos tiempo para el legado.")
         origen = st.selectbox("Origen:", ["Técnico", "Político", "Comerciante"])
         ideologia = st.selectbox("Ideología Política:", IDEOLOGIAS)
         historia = (
@@ -106,7 +100,6 @@ if not st.session_state.get("juego_iniciado", False):
         )
 
         if st.form_submit_button("Comenzar", type="primary"):
-            # Limpiamos las variables para que la PRÓXIMA partida tenga nombres nuevos
             if "nombre_inicial" in st.session_state:
                 del st.session_state.nombre_inicial
             if "apellido_inicial" in st.session_state:
@@ -117,12 +110,12 @@ if not st.session_state.get("juego_iniciado", False):
             st.session_state.mensajes = []
             st.session_state.hof_guardado = False
             st.session_state.tutorial_visto = False
-            st.session_state.sistema = prompts.construir_sistema(nombre, 24, historia, rasgo, origen, ideologia)
+            st.session_state.sistema = prompts.construir_sistema(nombre, edad, historia, rasgo, origen, ideologia)
             
             estado_inicial = parse_estado(
                 {
                     "rasgo": rasgo,
-                    "edad": 24,
+                    "edad": float(edad),
                     "genero": genero,
                     "origen": origen,
                     "ideologia": ideologia,
@@ -157,7 +150,6 @@ else:
         st.session_state.juego_iniciado = False
         st.rerun()
     
-    # Inicializar variable de tutorial si no existe
     if "tutorial_visto" not in st.session_state:
         st.session_state.tutorial_visto = False
     
@@ -474,7 +466,6 @@ else:
     with tab_campaña:
         st.subheader("Campaña Electoral")
         
-        # MINI-JUEGO: DEBATE ELECTORAL
         if estado.get("debate_activo"):
             debate = estado["debate_activo"]
             st.divider()
