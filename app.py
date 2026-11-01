@@ -132,7 +132,6 @@ else:
     ui.render_cabecera(estado)
     ui.render_sidebar(estado)
 
-    # AGREGAMOS LA NUEVA PESTAÑA DE LOGROS
     tab_cronicas, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_vida, tab_logros, tab_graficos = st.tabs([
         "📰 Portada", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🏆 Logros", "📊 Gráficos"
     ])
@@ -173,28 +172,44 @@ else:
         if accion:
             st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
             
+            # 1. ROUTER DE ACCIONES (Código puro para los números)
             es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
             
             if es_determinista:
-                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                estado["turno"] += 1
-                estado["energia"] = max(0, estado["energia"] - 10)
-                
-                # v1.2: Disparar mecánicas dinámicas al pasar el tiempo
-                evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
-                if evento_ocurrio:
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
-
-                acciones_rivales = mechanics.procesar_turno_rivales(estado)
-                for msg_rival in acciones_rivales:
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
-
-                nuevos_logros = mechanics.verificar_logros(estado)
-                for logro in nuevos_logros:
-                    st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
+                # La acción se ejecutó, ahora la IA narra lo que pasó
+                with st.spinner("El Game Master está narrando..."):
+                    contexto = prompts.generar_prompt_contexto(estado)
+                    mensajes_chat = [
+                        {"role": "system", "content": prompts.construir_sistema(estado["nombre"], estado["edad"], "Historia...", estado["rasgo"], "Origen", estado["ideologia"])},
+                        {"role": "system", "content": f"CONTEXTO ACTUAL:\n{contexto}"},
+                        {"role": "user", "content": f"El jugador acaba de: {accion}. El resultado mecánico fue: {msg_determinista}. Narrá de forma inmersiva y detallada lo que acaba de pasar, como si fueras un narrador de House of Cards. Responde en formato JSON: {{\"narrativa\": \"tu narrativa aquí\", \"efectos\": {{}}}}"},
+                    ]
                     
+                    respuesta_raw = prompts.llamar_llm(mensajes_chat, 7, "")
+                    json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                    narrativa_final = json_data.get("narrativa", msg_determinista)
+                    
+                    st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                    
+                    # Avanzar tiempo y mecánicas dinámicas
+                    estado["turno"] += 1
+                    estado["energia"] = max(0, estado["energia"] - 10)
+                    
+                    evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
+                    if evento_ocurrio:
+                        st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
+
+                    acciones_rivales = mechanics.procesar_turno_rivales(estado)
+                    for msg_rival in acciones_rivales:
+                        st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
+
+                    nuevos_logros = mechanics.verificar_logros(estado)
+                    for logro in nuevos_logros:
+                        st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
+                        
                 st.rerun()
             else:
+                # Acción no determinista, la IA decide todo
                 with st.spinner("El Game Master está simulando..."):
                     contexto = prompts.generar_prompt_contexto(estado)
                     mensajes_chat = [
@@ -214,7 +229,6 @@ else:
                     if game_over:
                         st.session_state.game_over = game_over
                         
-                    # v1.2: Disparar mecánicas dinámicas tras respuesta de IA
                     evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
                     if evento_ocurrio:
                         st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
@@ -236,7 +250,6 @@ else:
                 resumen = mechanics.procesar_economia(estado)
                 st.session_state.mensajes.append({"role": "assistant", "content": f"⏳ *Pasaste el tiempo descansando.*\n\n{resumen}"})
                 
-                # v1.2: Disparar mecánicas dinámicas
                 evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
                 if evento_ocurrio:
                     st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
@@ -262,7 +275,6 @@ else:
     with tab_vida:
         ui.render_tab_vida(estado)
 
-    # NUEVA PESTAÑA DE LOGROS
     with tab_logros:
         st.subheader("🏆 Salón de Logros")
         st.markdown("Desbloqueá logros cumpliendo desafíos a lo largo de tu dinastía.")
