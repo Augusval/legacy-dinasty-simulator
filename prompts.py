@@ -3,6 +3,7 @@ import json
 import re
 import logging
 import time
+import random
 import streamlit as st
 from groq import Groq
 from typing import Dict, Any, List, Tuple, Optional
@@ -117,7 +118,7 @@ def clasificar_intencion(texto: str) -> Dict[str, Any]:
     return {"es_valida": True}
 
 # ==============================================================================
-# LLAMADA A LA IA CON REINTENTOS
+# LLAMADA A LA IA CON REINTENTOS (v1.2.1 - Simplificada)
 # ==============================================================================
 
 def llamar_llm(
@@ -126,10 +127,10 @@ def llamar_llm(
     contexto_extra: str,
     es_inicio: bool = False,
     max_reintentos: int = 3
-) -> str:
+) -> Optional[str]:
     """
-    Envía los mensajes a Groq con sistema de reintentos automático.
-    Si falla 3 veces, retorna un fallback genérico.
+    Envía los mensajes a Groq con sistema de reintentos.
+    Retorna None si falla, para que el caller use narrativa procedural.
     """
     client = get_client()
     
@@ -141,28 +142,30 @@ def llamar_llm(
                 model="llama3-70b-8192",
                 messages=mensajes,
                 temperature=0.7,
-                max_tokens=1024,
-                response_format={"type": "json_object"}
+                max_tokens=512,
+                response_format={"type": "text"}
             )
             
             respuesta = completion.choices[0].message.content
             logger.info(f"Respuesta de IA recibida en intento {intento}")
+            
+            # Loguear uso de tokens
+            if hasattr(completion, 'usage'):
+                usage = completion.usage
+                logger.info(f"Tokens - Prompt: {usage.prompt_tokens}, Completación: {usage.completion_tokens}, Total: {usage.total_tokens}")
+            
             return respuesta
             
         except Exception as e:
             logger.error(f"Error en intento {intento}: {str(e)}")
             
             if intento < max_reintentos:
-                logger.info(f"Reintentando en 2 segundos...")
-                time.sleep(2)
+                time.sleep(1)
             else:
-                logger.error(f"Todos los reintentos fallaron. Usando fallback.")
-                return json.dumps({
-                    "narrativa": "El Game Master está experimentando dificultades técnicas. La situación permanece sin cambios por ahora.",
-                    "efectos": {}
-                })
+                logger.error(f"Todos los reintentos fallaron. Retornando None.")
+                return None
     
-    return json.dumps({"narrativa": "Error desconocido.", "efectos": {}})
+    return None
 
 # ==============================================================================
 # EXTRACCIÓN DE JSON ROBUSTA
@@ -170,6 +173,9 @@ def llamar_llm(
 
 def extraer_json_de_respuesta(texto: str) -> Dict[str, Any]:
     """Extrae el JSON de la respuesta, incluso si hay texto basura."""
+    if not texto:
+        return {"narrativa": "", "efectos": {}}
+        
     inicio = texto.find('{')
     fin = texto.rfind('}')
     
@@ -189,10 +195,7 @@ def extraer_json_de_respuesta(texto: str) -> Dict[str, Any]:
 # ==============================================================================
 
 def generar_prompt_evento_aleatorio(estado: Dict[str, Any]) -> List[Dict[str, str]]:
-    """
-    Genera los mensajes para pedirle a la IA un evento aleatorio sorpresivo
-    basado en el contexto actual del jugador.
-    """
+    """Genera los mensajes para pedirle a la IA un evento aleatorio sorpresivo."""
     contexto = generar_prompt_contexto(estado)
     
     system_msg = {
@@ -212,9 +215,7 @@ def generar_prompt_evento_aleatorio(estado: Dict[str, Any]) -> List[Dict[str, st
 
 
 def generar_prompt_accion_rival(estado: Dict[str, Any], rival_nombre: str, rival_poder: int) -> List[Dict[str, str]]:
-    """
-    Genera los mensajes para pedirle a la IA que decida una acción estratégica para un rival político.
-    """
+    """Genera los mensajes para pedirle a la IA que decida una acción estratégica para un rival político."""
     contexto = generar_prompt_contexto(estado)
     
     system_msg = {
@@ -235,9 +236,7 @@ def generar_prompt_accion_rival(estado: Dict[str, Any], rival_nombre: str, rival
 
 
 def generar_prompt_faccion_tension(faccion_a: str, valor_a: int, faccion_b: str, valor_b: int) -> List[Dict[str, str]]:
-    """
-    Genera un prompt para narrar la tensión natural entre dos facciones opuestas.
-    """
+    """Genera un prompt para narrar la tensión natural entre dos facciones opuestas."""
     system_msg = {
         "role": "system",
         "content": """Eres el narrador de tensiones políticas en LEGACY.
@@ -251,3 +250,60 @@ def generar_prompt_faccion_tension(faccion_a: str, valor_a: int, faccion_b: str,
     }
     
     return [system_msg, user_msg]
+
+# ==============================================================================
+# NARRATIVA PROCEDURAL (Fallback cuando la IA falla)
+# ==============================================================================
+
+def generar_narrativa_procedural(accion: str, resultado: str, estado: Dict[str, Any]) -> str:
+    """
+    Genera una narrativa básica pero interesante cuando la IA falla.
+    Usa plantillas predefinidas basadas en el tipo de acción.
+    """
+    nombre = estado.get("nombre", "El jugador")
+    apellido = estado.get("apellido_dinastia", "")
+    
+    plantillas = {
+        "fundar": [
+            f"{nombre} firma los papeles de constitución de su nueva empresa. Los trámites burocráticos son tediosos, pero la emoción de ser empresario lo compensa. {resultado}",
+            f"Con determinación, {nombre} {apellido} establece su nuevo negocio. El contador le advierte sobre los riesgos, pero él sabe que este es el primer paso hacia un imperio. {resultado}",
+            f"En una pequeña oficina alquilada, {nombre} concreta la fundación de su empresa. Los comienzos son difíciles, pero la visión es clara. {resultado}"
+        ],
+        "estudiar": [
+            f"{nombre} se sumerge en libros y cursos, expandiendo sus conocimientos. Cada hora de estudio es una inversión en su futuro. {resultado}",
+            f"Con disciplina, {nombre} {apellido} dedica tiempo a su formación. El conocimiento es poder, y él lo sabe. {resultado}",
+            f"Las noches de estudio dan sus frutos. {nombre} siente cómo sus habilidades crecen. {resultado}"
+        ],
+        "trabajo": [
+            f"{nombre} negocia con su jefe, buscando mejorar su situación laboral. {resultado}",
+            f"En la oficina, {nombre} {apellido} demuestra su valía. {resultado}",
+            f"El mundo laboral es implacable, pero {nombre} no se rinde. {resultado}"
+        ],
+        "politica": [
+            f"{nombre} da sus primeros pasos en el mundo político. {resultado}",
+            f"La arena política es traicionera, pero {nombre} {apellido} está listo para el desafío. {resultado}",
+            f"Con un discurso bien preparado, {nombre} se lanza a la contienda política. {resultado}"
+        ],
+        "default": [
+            f"{nombre} {apellido} toma una decisión importante. {resultado}",
+            f"El destino de la dinastía {apellido} se juega en este momento. {resultado}",
+            f"En las calles de Argentina, {nombre} hace su movimiento. {resultado}"
+        ]
+    }
+    
+    # Determinar qué plantilla usar
+    accion_lower = accion.lower()
+    if "fundar" in accion_lower or "empresa" in accion_lower:
+        tipo = "fundar"
+    elif "estudiar" in accion_lower or "aprender" in accion_lower:
+        tipo = "estudiar"
+    elif "trabajo" in accion_lower or "empleo" in accion_lower or "sueldo" in accion_lower:
+        tipo = "trabajo"
+    elif "politica" in accion_lower or "diputado" in accion_lower or "presidente" in accion_lower:
+        tipo = "politica"
+    else:
+        tipo = "default"
+    
+    plantilla = random.choice(plantillas[tipo])
+    
+    return plantilla

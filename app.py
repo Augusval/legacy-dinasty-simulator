@@ -76,9 +76,14 @@ if not st.session_state.juego_iniciado:
             
             with st.spinner("El Game Master está preparando el escenario..."):
                 respuesta_raw = prompts.llamar_llm(mensajes_iniciales, 0, "", es_inicio=True)
-                json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
                 
-                st.session_state.mensajes.append({"role": "assistant", "content": json_data.get("narrativa", "Bienvenido a LEGACY.")})
+                if respuesta_raw:
+                    json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                    narrativa_inicial = json_data.get("narrativa", "Bienvenido a LEGACY.")
+                else:
+                    narrativa_inicial = f"Bienvenido a LEGACY, {nombre} {apellido}. Tenés {edad} años y vivís en Argentina. Tu historia comienza ahora."
+                
+                st.session_state.mensajes.append({"role": "assistant", "content": narrativa_inicial})
                 st.session_state.estado["titular_periodico"] = f"Comienza la era de la Dinastía {apellido}."
                 
             st.rerun()
@@ -127,9 +132,6 @@ else:
         "📰 Portada", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🎯 Objetivos", "🏆 Logros", "📊 Gráficos"
     ])
 
-    # =====================================================================
-    # PESTAÑA PORTADA (Solo chat, sin botones de acciones)
-    # =====================================================================
     with tab_cronicas:
         ui.render_titular(estado)
 
@@ -188,34 +190,27 @@ else:
             es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
             
             if es_determinista:
-                # FIX: Verificar si la IA devolvió el mensaje de fallback
-                narrativa_final = msg_determinista
+                narrativa_final = None
                 try:
                     contexto = prompts.generar_prompt_contexto(estado)
                     mensajes_chat = [
-                        {"role": "system", "content": f"Eres el narrador de LEGACY. El jugador hizo: {accion}. Resultado: {msg_determinista}. Narrá en 2-3 oraciones inmersivas lo que pasó. Responde SOLO con texto narrativo."},
+                        {"role": "system", "content": f"Eres el narrador de LEGACY. El jugador hizo: {accion}. Resultado: {msg_determinista}. Narrá en 2-3 oraciones inmersivas lo que pasó. Responde SOLO con texto narrativo, sin JSON ni formato especial."},
                         {"role": "user", "content": f"Contexto: {contexto}"}
                     ]
                     respuesta_raw = prompts.llamar_llm(mensajes_chat, 0, "")
                     
-                    # Verificar si es el mensaje de fallback
-                    if "dificultades técnicas" in respuesta_raw:
-                        narrativa_final = msg_determinista
-                    else:
-                        json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                        if json_data.get("narrativa") and "dificultades técnicas" not in json_data["narrativa"]:
-                            narrativa_final = json_data["narrativa"]
-                        elif len(respuesta_raw.strip()) > 20:
-                            narrativa_final = respuesta_raw
+                    if respuesta_raw and len(respuesta_raw.strip()) > 10:
+                        narrativa_final = respuesta_raw
                 except Exception as e:
                     logger.warning(f"IA de narración falló: {e}")
-                    narrativa_final = msg_determinista
+                
+                if not narrativa_final:
+                    narrativa_final = prompts.generar_narrativa_procedural(accion, msg_determinista, estado)
                 
                 st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
                 estado["turno"] += 1
                 estado["energia"] = max(0, estado["energia"] - 10)
                 
-                # Verificar objetivos
                 objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
                 for obj_msg in objetivos_nuevos:
                     st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
@@ -243,15 +238,18 @@ else:
                     ]
                     
                     respuesta_raw = prompts.llamar_llm(mensajes_chat, 7, "")
-                    json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
                     
-                    estado, narrativa_final, game_over = mechanics.procesar_respuesta(
-                        json_data.get("narrativa", ""), 7, estado
-                    )
-                    
-                    st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
-                    if game_over:
-                        st.session_state.game_over = game_over
+                    if respuesta_raw:
+                        json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                        estado, narrativa_final, game_over = mechanics.procesar_respuesta(
+                            json_data.get("narrativa", ""), 7, estado
+                        )
+                        st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                        if game_over:
+                            st.session_state.game_over = game_over
+                    else:
+                        narrativa_final = prompts.generar_narrativa_procedural(accion, "La situación permanece en calma.", estado)
+                        st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
                         
                     objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
                     for obj_msg in objetivos_nuevos:
@@ -293,7 +291,7 @@ else:
                 st.rerun()
 
     # =====================================================================
-    # PESTAÑA GOBIERNO (Con botón de postulación)
+    # PESTAÑA GOBIERNO
     # =====================================================================
     with tab_gobierno:
         ui.render_tab_gobierno(estado)
@@ -307,9 +305,8 @@ else:
                 accion = "postularme a diputado"
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
                 
-                # Verificar requisitos
                 if estado.get("reputacion", 0) < 30:
-                    st.session_state.mensajes.append({"role": "assistant", "content": "❌ **Requisitos insuficientes:** Necesitás al menos 30 de Reputación para postularte a Diputado. Tu reputación actual es 50."})
+                    st.session_state.mensajes.append({"role": "assistant", "content": f"❌ **Requisitos insuficientes:** Necesitás al menos 30 de Reputación para postularte a Diputado. Tu reputación actual es {estado.get('reputacion', 50)}."})
                 else:
                     ok, msg = mechanics.calcular_exito_campana(estado, "Diputado")
                     if ok:
@@ -322,7 +319,7 @@ else:
                 st.rerun()
 
     # =====================================================================
-    # PESTAÑA EMPRESAS (Con botón de fundación)
+    # PESTAÑA EMPRESAS
     # =====================================================================
     with tab_empresas:
         ui.render_tab_empresas(estado)
@@ -410,7 +407,7 @@ else:
         ui.render_tab_vida(estado)
 
     # =====================================================================
-    # PESTAÑA OBJETIVOS (NUEVA - Con recompensas)
+    # PESTAÑA OBJETIVOS
     # =====================================================================
     with tab_objetivos:
         st.subheader("🎯 Objetivos Dinásticos")
@@ -424,7 +421,6 @@ else:
         if not objetivos:
             st.info("No tenés objetivos dinásticos activos.")
         else:
-            # Definición de recompensas
             recompensas = {
                 "Alcanzar la Presidencia antes de los 55": {
                     "nombre": "Mandato Legítimo",

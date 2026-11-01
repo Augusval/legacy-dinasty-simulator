@@ -7,10 +7,6 @@ from entidades import Empresa, Hijo, Ministro, Medio, Rival
 from state import TIPOS_EMPRESA, PROVINCIAS, NOMBRES_PILA
 import prompts
 
-# ==============================================================================
-# CONFIGURACIÓN DE LOGGING
-# ==============================================================================
-
 logger = logging.getLogger(__name__)
 
 # ==============================================================================
@@ -59,7 +55,6 @@ def procesar_economia(estado: Dict[str, Any]) -> str:
     """Calcula ingresos, gastos, dividendos e inflación al pasar el tiempo."""
     resumen = []
     
-    # 1. Gastos de Calidad de Vida
     nivel_vida = estado.get("nivel_calidad_vida", 1)
     costo_vida = COSTO_VIDA_POR_NIVEL.get(nivel_vida, 8000)
     inflacion = estado.get("inflacion", 25.0) / 100.0
@@ -68,7 +63,6 @@ def procesar_economia(estado: Dict[str, Any]) -> str:
     estado["dinero_personal"] -= costo_vida_real
     resumen.append(f"💸 Costo de vida: -${costo_vida_real:,}")
     
-    # 2. Ingresos por Trabajo
     trabajo = estado.get("trabajo_actual", "Desempleado")
     sueldo_base = SALARIOS_BASE.get(trabajo, 0)
     bonus_tecnica = estado.get("habilidad_tecnica", 20) / 100.0
@@ -79,7 +73,6 @@ def procesar_economia(estado: Dict[str, Any]) -> str:
     if sueldo_final > 0:
         resumen.append(f"💼 Sueldo ({trabajo}): +${sueldo_final:,}")
         
-    # 3. Dividendos de Empresas
     corporaciones = estado.get("corporaciones", {})
     dividendos_totales = 0
     habilidad_negocios = estado.get("habilidad_negocios", 20)
@@ -98,7 +91,6 @@ def procesar_economia(estado: Dict[str, Any]) -> str:
         estado["dinero_personal"] += dividendos_totales
         resumen.append(f"🏢 Dividendos de empresas: +${dividendos_totales:,}")
         
-    # 4. Envejecimiento
     estado["edad"] = estado.get("edad", 24) + 0.083
     
     return "\n".join(resumen)
@@ -351,13 +343,22 @@ def procesar_tension_facciones(estado: Dict[str, Any]) -> List[str]:
     return mensajes
 
 # ==============================================================================
-# RIVALES ACTIVOS (v1.2)
+# RIVALES ACTIVOS (v1.2.1 - Con narrativa procedural de fallback)
 # ==============================================================================
 
 def procesar_turno_rivales(estado: Dict[str, Any]) -> List[str]:
     """Cada rival tiene una probabilidad de actuar cada turno."""
     mensajes = []
     rivales = estado.get("rivales", [])
+    
+    acciones_proc = [
+        "se mantiene en silencio, observando tus movimientos",
+        "refuerza sus alianzas en las sombras",
+        "prepara su próxima jugada política",
+        "analiza tus debilidades con paciencia",
+        "conversa en secreto con otros opositores",
+        "espera el momento justo para atacar"
+    ]
     
     for rival in rivales:
         if random.random() < 0.20:
@@ -366,25 +367,34 @@ def procesar_turno_rivales(estado: Dict[str, Any]) -> List[str]:
                     estado, rival.nombre, rival.poder
                 )
                 respuesta_raw = prompts.llamar_llm(mensajes_prompt, 0, "")
-                data = prompts.extraer_json_de_respuesta(respuesta_raw)
                 
-                accion = data.get("accion", "El rival se mantiene en silencio.")
-                efectos = data.get("efectos", {})
-                cambio_poder = data.get("cambio_poder_rival", 0)
-                
-                for stat, valor in efectos.items():
-                    if stat in estado and isinstance(valor, (int, float)):
-                        if stat in ["reputacion", "aprobacion_publica", "opinion_publica"]:
-                            estado[stat] = max(0, min(100, estado[stat] + valor))
-                        elif stat == "dinero_personal":
-                            estado[stat] += valor
-                            
-                rival.poder = max(0, min(100, rival.poder + cambio_poder))
-                mensajes.append(f"🕴️ **{rival.nombre}**: {accion} (Su poder ahora es {rival.poder}%)")
-                
+                if respuesta_raw:
+                    data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                    accion = data.get("accion", None)
+                    efectos = data.get("efectos", {})
+                    cambio_poder = data.get("cambio_poder_rival", 0)
+                    
+                    if accion:
+                        for stat, valor in efectos.items():
+                            if stat in estado and isinstance(valor, (int, float)):
+                                if stat in ["reputacion", "aprobacion_publica", "opinion_publica"]:
+                                    estado[stat] = max(0, min(100, estado[stat] + valor))
+                                elif stat == "dinero_personal":
+                                    estado[stat] += valor
+                                    
+                        rival.poder = max(0, min(100, rival.poder + cambio_poder))
+                        mensajes.append(f"🕴️ **{rival.nombre}**: {accion} (Su poder ahora es {rival.poder}%)")
+                    else:
+                        accion_proc = random.choice(acciones_proc)
+                        mensajes.append(f"🕴️ **{rival.nombre}** {accion_proc}. (Su poder: {rival.poder}%)")
+                else:
+                    accion_proc = random.choice(acciones_proc)
+                    mensajes.append(f"🕴️ **{rival.nombre}** {accion_proc}. (Su poder: {rival.poder}%)")
+                    
             except Exception as e:
                 logger.error(f"Error procesando acción de rival {rival.nombre}: {e}")
-                mensajes.append(f"🕴️ {rival.nombre} está tramando algo en las sombras...")
+                accion_proc = random.choice(acciones_proc)
+                mensajes.append(f"🕴️ **{rival.nombre}** {accion_proc}. (Su poder: {rival.poder}%)")
                 
     return mensajes
 
@@ -398,22 +408,32 @@ def procesar_evento_aleatorio(estado: Dict[str, Any]) -> Tuple[bool, str]:
         try:
             mensajes_prompt = prompts.generar_prompt_evento_aleatorio(estado)
             respuesta_raw = prompts.llamar_llm(mensajes_prompt, 0, "")
-            data = prompts.extraer_json_de_respuesta(respuesta_raw)
             
-            titulo = data.get("titulo", "Evento Inesperado")
-            descripcion = data.get("descripcion", "Algo ocurrió.")
-            efectos = data.get("efectos", {})
-            
-            for stat, valor in efectos.items():
-                if stat in estado and isinstance(valor, (int, float)):
-                    if stat in ["reputacion", "aprobacion_publica", "energia", "salud_fisica"]:
-                        estado[stat] = max(0, min(100, estado[stat] + valor))
-                    elif stat == "dinero_personal":
-                        estado[stat] += valor
-                    elif stat == "nivel_escandalo":
-                        estado[stat] = max(0, min(100, estado[stat] + valor))
-                        
-            return True, f"🎲 **{titulo}**\n{descripcion}"
+            if respuesta_raw:
+                data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                titulo = data.get("titulo", "Evento Inesperado")
+                descripcion = data.get("descripcion", "Algo ocurrió.")
+                efectos = data.get("efectos", {})
+                
+                for stat, valor in efectos.items():
+                    if stat in estado and isinstance(valor, (int, float)):
+                        if stat in ["reputacion", "aprobacion_publica", "energia", "salud_fisica"]:
+                            estado[stat] = max(0, min(100, estado[stat] + valor))
+                        elif stat == "dinero_personal":
+                            estado[stat] += valor
+                        elif stat == "nivel_escandalo":
+                            estado[stat] = max(0, min(100, estado[stat] + valor))
+                            
+                return True, f"🎲 **{titulo}**\n{descripcion}"
+            else:
+                # Fallback procedural
+                eventos_proc = [
+                    "🎲 **Rumor en la ciudad:** Se dice que un aliado cercano está considerando traicionarte.",
+                    "🎲 **Oportunidad inesperada:** Un contacto te ofrece un negocio turbio pero rentable.",
+                    "🎲 **Crisis menor:** Una protesta en la capital afecta levemente tu imagen pública.",
+                    "🎲 **Noticia favorable:** Un medio importante elogia tu gestión silenciosamente."
+                ]
+                return True, random.choice(eventos_proc)
             
         except Exception as e:
             logger.error(f"Error generando evento aleatorio: {e}")
@@ -451,41 +471,110 @@ def verificar_logros(estado: Dict[str, Any]) -> List[str]:
     return logros_desbloqueados
 
 # ==============================================================================
+# SISTEMA DE OBJETIVOS DINÁSTICOS CON RECOMPENSAS (v1.2.1)
+# ==============================================================================
+
+def verificar_objetivos_dinasticos(estado: Dict[str, Any]) -> List[str]:
+    """Verifica si se completaron objetivos dinásticos y aplica recompensas."""
+    mensajes = []
+    objetivos = estado.get("objetivos_dinasticos", [])
+    completados = set(estado.get("objetivos_completados", []))
+    
+    for obj in objetivos:
+        if obj not in completados:
+            completado = False
+            
+            if obj == "Alcanzar la Presidencia antes de los 55":
+                if estado.get("cargo_politico") == "Presidente" and estado.get("edad", 100) < 55:
+                    completado = True
+                    estado.setdefault("bonificaciones_objetivos", []).append("Mandato Legítimo")
+                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Alcanzaste la Presidencia antes de los 55. Has desbloqueado: **Mandato Legítimo** - Tu Aprobación Pública nunca puede bajar del 40%.")
+            
+            elif obj == "Acumular $5M en patrimonio":
+                if estado.get("dinero_personal", 0) >= 5000000:
+                    completado = True
+                    estado.setdefault("bonificaciones_objetivos", []).append("Magnate")
+                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Acumulaste $5M en patrimonio. Has desbloqueado: **Magnate** - Tu próximo heredero empieza con +20 Negocios y $500K extra.")
+            
+            elif obj == "Fundar una empresa Nivel 4":
+                corporaciones = estado.get("corporaciones", {})
+                if any(emp.nivel >= 4 for emp in corporaciones.values() if hasattr(emp, 'nivel')):
+                    completado = True
+                    estado.setdefault("bonificaciones_objetivos", []).append("Monopolio Familiar")
+                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Tienes una empresa en Nivel 4. Has desbloqueado: **Monopolio Familiar** - Todas tus empresas generan 25% más de dividendos.")
+            
+            elif obj == "Sobrevivir a 3 Crisis Nacionales":
+                crisis_sobrevividas = estado.get("crisis_sobrevividas", 0)
+                if crisis_sobrevividas >= 3:
+                    completado = True
+                    estado.setdefault("bonificaciones_objetivos", []).append("Acero Templado")
+                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Sobreviviste a 3 Crisis Nacionales. Has desbloqueado: **Acero Templado** - Tu Salud Mental y Física no bajan por escándalos.")
+            
+            if completado:
+                estado.setdefault("objetivos_completados", []).append(obj)
+    
+    return mensajes
+
+# ==============================================================================
 # ROUTER DE ACCIONES DETERMINISTAS
 # ==============================================================================
 
 def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bool, str]:
     """Analiza el texto del jugador. Si es una acción mecánica conocida, la ejecuta directamente."""
-    t = texto.lower()
+    t = texto.lower().strip()
     
-    if any(k in t for k in ["fundar empresa", "crear empresa", "abrir negocio"]):
+    logger.info(f"Procesando acción: '{t}'")
+    
+    if "fundar" in t and "empresa" in t:
         tipo = "Consultora"
-        if "tech" in t or "startup" in t: tipo = "Tech Startup"
-        elif "inmobiliaria" in t or "casa" in t: tipo = "Inmobiliaria"
-        elif "banco" in t or "financiera" in t: tipo = "Banco"
+        if "tech" in t or "startup" in t or "tecnología" in t: 
+            tipo = "Tech Startup"
+        elif "inmobiliaria" in t or "casa" in t or "inmueble" in t: 
+            tipo = "Inmobiliaria"
+        elif "banco" in t or "financiera" in t or "banca" in t: 
+            tipo = "Banco"
+        
+        logger.info(f"Intentando fundar empresa tipo: {tipo}")
         ok, msg = intentar_fundar_empresa(estado, tipo)
         return ok, msg
 
-    if "estudiar" in t or "capacitarse" in t or "leer sobre" in t:
+    if ("crear" in t or "abrir" in t) and ("empresa" in t or "negocio" in t or "compañía" in t):
+        tipo = "Consultora"
+        if "tech" in t or "startup" in t: 
+            tipo = "Tech Startup"
+        elif "inmobiliaria" in t: 
+            tipo = "Inmobiliaria"
+        elif "banco" in t: 
+            tipo = "Banco"
+        
+        ok, msg = intentar_fundar_empresa(estado, tipo)
+        return ok, msg
+
+    if "estudiar" in t or "capacitarse" in t or "aprender" in t:
         enfoque = "tecnica"
-        if "politica" in t or "oratoria" in t: enfoque = "politica"
-        elif "negocio" in t or "finanza" in t or "economia" in t: enfoque = "negocios"
+        if "politica" in t or "oratoria" in t or "política" in t: 
+            enfoque = "politica"
+        elif "negocio" in t or "finanza" in t or "economia" in t or "economía" in t: 
+            enfoque = "negocios"
+        
         ok, msg = intentar_estudiar(estado, enfoque)
         return ok, msg
 
-    if "mudar" in t or "mejorar vivienda" in t or "comprar casa" in t:
+    if "mudar" in t or "mejorar vivienda" in t or "comprar casa" in t or "mudarse" in t:
         ok, msg = intentar_mejorar_vivienda(estado)
         return ok, msg
 
-    if "pauta" in t or "entrevista" in t:
+    if "pauta" in t or "entrevista" in t or "publicidad" in t:
         medio_nombre = None
         for m in estado.get("medios", []):
-            if m.nombre.lower() in t: medio_nombre = m.nombre
+            if m.nombre.lower() in t: 
+                medio_nombre = m.nombre
         if medio_nombre:
-            accion = "pauta" if "pauta" in t else "entrevista"
+            accion = "pauta" if "pauta" in t or "publicidad" in t else "entrevista"
             ok, msg = gestionar_prensa(estado, medio_nombre, accion)
             return ok, msg
 
+    logger.info(f"Acción no detectada como determinista: '{t}'")
     return False, ""
 
 # ==============================================================================
@@ -528,7 +617,6 @@ def procesar_respuesta(
         if efectos_min:
             narrativa += "\n" + "\n".join(efectos_min)
             
-        # v1.2: Tensión de facciones
         tension_msg = procesar_tension_facciones(estado)
         if tension_msg:
             narrativa += "\n" + "\n".join(tension_msg)
@@ -543,52 +631,3 @@ def procesar_respuesta(
             game_over = "💀 **FIN DE UNA ERA:** Has fallecido. Es hora de que tu heredero tome el mando."
 
     return estado, narrativa, game_over
-
-# ==============================================================================
-# SISTEMA DE OBJETIVOS DINÁSTICOS CON RECOMPENSAS (v1.2.1)
-# ==============================================================================
-
-def verificar_objetivos_dinasticos(estado: Dict[str, Any]) -> List[str]:
-    """
-    Verifica si se completaron objetivos dinásticos y aplica recompensas.
-    Retorna lista de mensajes de objetivos completados.
-    """
-    mensajes = []
-    objetivos = estado.get("objetivos_dinasticos", [])
-    completados = set(estado.get("objetivos_completados", []))
-    bonificaciones = estado.get("bonificaciones_objetivos", [])
-    
-    for obj in objetivos:
-        if obj not in completados:
-            completado = False
-            
-            if obj == "Alcanzar la Presidencia antes de los 55":
-                if estado.get("cargo_politico") == "Presidente" and estado.get("edad", 100) < 55:
-                    completado = True
-                    estado.setdefault("bonificaciones_objetivos", []).append("Mandato Legítimo")
-                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Alcanzaste la Presidencia antes de los 55. Has desbloqueado: **Mandato Legítimo** - Tu Aprobación Pública nunca puede bajar del 40%.")
-            
-            elif obj == "Acumular $5M en patrimonio":
-                if estado.get("dinero_personal", 0) >= 5000000:
-                    completado = True
-                    estado.setdefault("bonificaciones_objetivos", []).append("Magnate")
-                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Acumulaste $5M en patrimonio. Has desbloqueado: **Magnate** - Tu próximo heredero empieza con +20 Negocios y $500K extra.")
-            
-            elif obj == "Fundar una empresa Nivel 4":
-                corporaciones = estado.get("corporaciones", {})
-                if any(emp.nivel >= 4 for emp in corporaciones.values() if hasattr(emp, 'nivel')):
-                    completado = True
-                    estado.setdefault("bonificaciones_objetivos", []).append("Monopolio Familiar")
-                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Tienes una empresa en Nivel 4. Has desbloqueado: **Monopolio Familiar** - Todas tus empresas generan 25% más de dividendos.")
-            
-            elif obj == "Sobrevivir a 3 Crisis Nacionales":
-                crisis_sobrevividas = estado.get("crisis_sobrevividas", 0)
-                if crisis_sobrevividas >= 3:
-                    completado = True
-                    estado.setdefault("bonificaciones_objetivos", []).append("Acero Templado")
-                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Sobreviviste a 3 Crisis Nacionales. Has desbloqueado: **Acero Templado** - Tu Salud Mental y Física no bajan por escándalos.")
-            
-            if completado:
-                estado.setdefault("objetivos_completados", []).append(obj)
-    
-    return mensajes
