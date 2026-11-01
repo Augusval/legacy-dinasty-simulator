@@ -7,10 +7,6 @@ import ui
 from state import inicializar_estado, leer_hall_of_fame, NOMBRES_PILA
 from entidades import Empresa, Hijo, Ministro, Medio, Rival
 
-# ==============================================================================
-# CONFIGURACIÓN INICIAL
-# ==============================================================================
-
 logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title="LEGACY v1.2", layout="wide", page_icon="📰")
@@ -24,10 +20,6 @@ if "tutorial_visto" not in st.session_state:
     st.session_state.tutorial_visto = False
 
 st.title("LEGACY - Crónicas Dinásticas v1.2")
-
-# ==============================================================================
-# PANTALLA DE INICIO
-# ==============================================================================
 
 if not st.session_state.juego_iniciado:
     st.markdown("## El Comienzo de una Dinastía")
@@ -68,6 +60,8 @@ if not st.session_state.juego_iniciado:
             
             estado = inicializar_estado(nombre, apellido, edad, genero, origen, ideologia, rasgo)
             estado["objetivos_dinasticos"] = objetivos
+            estado["objetivos_completados"] = []
+            estado["bonificaciones_objetivos"] = []
             
             st.session_state.estado = estado
             st.session_state.juego_iniciado = True
@@ -90,9 +84,6 @@ if not st.session_state.juego_iniciado:
             st.rerun()
     st.stop()
 
-# ==============================================================================
-# PANTALLA DE JUEGO (BUCLE PRINCIPAL)
-# ==============================================================================
 else:
     estado = st.session_state.estado
 
@@ -132,31 +123,28 @@ else:
     ui.render_cabecera(estado)
     ui.render_sidebar(estado)
 
-    tab_cronicas, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_vida, tab_logros, tab_graficos = st.tabs([
-        "📰 Portada", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🏆 Logros", "📊 Gráficos"
+    tab_cronicas, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_vida, tab_objetivos, tab_logros, tab_graficos = st.tabs([
+        "📰 Portada", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🎯 Objetivos", "🏆 Logros", "📊 Gráficos"
     ])
 
+    # =====================================================================
+    # PESTAÑA PORTADA (Solo chat, sin botones de acciones)
+    # =====================================================================
     with tab_cronicas:
         ui.render_titular(estado)
-        ui.render_objetivos(estado)
 
-        # =====================================================================
-        # TUTORIAL INICIAL (solo aparece la primera vez)
-        # =====================================================================
         if not st.session_state.tutorial_visto:
             st.markdown("""
             <div style="background-color: #1a1d24; border-left: 5px solid #d4af37; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
                 <h3 style="color: #d4af37; margin-top: 0;">📖 Cómo jugar LEGACY</h3>
-                <p>Bienvenido a tu dinastía política. Acá tenés las acciones básicas para empezar:</p>
+                <p>Bienvenido a tu dinastía política. Usá las pestañas de arriba para acceder a las diferentes mecánicas:</p>
                 <ul>
-                    <li>💼 <b>Trabajar:</b> Escribí <i>"pedir aumento"</i> o <i>"buscar mejor empleo"</i> para subir tu sueldo.</li>
-                    <li>🏢 <b>Empresas:</b> Escribí <i>"fundar empresa tech"</i>, <i>"fundar inmobiliaria"</i> o <i>"fundar banco"</i> para crear tu imperio.</li>
-                    <li>📚 <b>Estudiar:</b> Escribí <i>"estudiar política"</i>, <i>"estudiar negocios"</i> o <i>"estudiar técnica"</i> para mejorar tus habilidades.</li>
-                    <li>🗳️ <b>Política:</b> Cuando tengas suficiente reputación, escribí <i>"postularme a diputado"</i> para entrar en política.</li>
-                    <li>📰 <b>Prensa:</b> Escribí <i>"dar entrevista a Clarín"</i> o <i>"comprar pauta en Página 12"</i> para influir en la opinión pública.</li>
-                    <li>⏳ <b>Tiempo:</b> Usá el botón <i>"Avanzar 1 mes"</i> para pasar el tiempo y cobrar tu sueldo.</li>
+                    <li>🏛️ <b>Gobierno:</b> Postulate a cargos políticos y gestioná tu gabinete.</li>
+                    <li>🏢 <b>Empresas:</b> Fundá y gestioná tu imperio corporativo.</li>
+                    <li>📺 <b>Prensa:</b> Influí en la opinión pública a través de los medios.</li>
+                    <li>🎯 <b>Objetivos:</b> Revisá tus metas dinásticas y sus recompensas.</li>
                 </ul>
-                <p><i>Podés escribir cualquier acción en lenguaje natural. El Game Master interpretará lo que querés hacer.</i></p>
+                <p><i>También podés escribir cualquier acción en el chat de abajo.</i></p>
             </div>
             """, unsafe_allow_html=True)
             
@@ -165,9 +153,6 @@ else:
                 st.rerun()
             st.stop()
 
-        # =====================================================================
-        # CHAT Y ACCIONES
-        # =====================================================================
         with st.container(height=400):
             for msg in st.session_state.mensajes[-10:]:
                 with st.chat_message(msg["role"]):
@@ -195,85 +180,7 @@ else:
 
         st.divider()
 
-        # =====================================================================
-        # BOTONES DE ACCIONES SUGERIDAS
-        # =====================================================================
-        st.markdown("**⚡ Acciones rápidas:**")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            if st.button("🏢 Fundar empresa", use_container_width=True):
-                accion = "fundar empresa tech"
-                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                
-                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                
-                if es_determinista:
-                    # Intentar narrar con IA, pero con fallback al mensaje mecánico
-                    narrativa_final = msg_determinista
-                    try:
-                        contexto = prompts.generar_prompt_contexto(estado)
-                        mensajes_chat = [
-                            {"role": "system", "content": f"Eres el narrador de LEGACY. El jugador acaba de fundar una empresa. El resultado fue: {msg_determinista}. Narrá en 2-3 oraciones de forma inmersiva lo que pasó, como un periodista político. Responde SOLO con el texto narrativo, sin JSON ni formato especial."},
-                            {"role": "user", "content": f"Contexto: {contexto}"}
-                        ]
-                        respuesta_raw = prompts.llamar_llm(mensajes_chat, 0, "")
-                        # Si la respuesta es JSON, extraer narrativa; si no, usarla directo
-                        json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                        if json_data.get("narrativa") and json_data["narrativa"] != respuesta_raw:
-                            narrativa_final = json_data["narrativa"]
-                        elif len(respuesta_raw.strip()) > 20:
-                            narrativa_final = respuesta_raw
-                    except Exception as e:
-                        logger.warning(f"IA de narración falló, usando fallback: {e}")
-                    
-                    st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
-                    estado["turno"] += 1
-                    estado["energia"] = max(0, estado["energia"] - 10)
-                    st.rerun()
-                else:
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                    st.rerun()
-
-        with col2:
-            if st.button("📚 Estudiar política", use_container_width=True):
-                accion = "estudiar política"
-                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                
-                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                estado["turno"] += 1
-                estado["energia"] = max(0, estado["energia"] - 10)
-                st.rerun()
-
-        with col3:
-            if st.button("💼 Pedir aumento", use_container_width=True):
-                accion = "pedir aumento en el trabajo"
-                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                
-                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                estado["turno"] += 1
-                estado["energia"] = max(0, estado["energia"] - 10)
-                st.rerun()
-
-        with col4:
-            if st.button("🗳️ Postularme a Diputado", use_container_width=True):
-                accion = "postularme a diputado"
-                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                
-                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                estado["turno"] += 1
-                estado["energia"] = max(0, estado["energia"] - 10)
-                st.rerun()
-
-        st.divider()
-
-        # =====================================================================
-        # INPUT DE TEXTO LIBRE
-        # =====================================================================
-        accion = st.chat_input("Escribí tu acción... (ej: 'Fundar empresa', 'Estudiar política', 'Dar entrevista a Clarín')")
+        accion = st.chat_input("Escribí tu acción... (ej: 'Estudiar política', 'Dar entrevista a Clarín')")
         
         if accion:
             st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
@@ -281,26 +188,37 @@ else:
             es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
             
             if es_determinista:
-                # La acción se ejecutó en código. Intentamos narrar con IA.
+                # FIX: Verificar si la IA devolvió el mensaje de fallback
                 narrativa_final = msg_determinista
                 try:
                     contexto = prompts.generar_prompt_contexto(estado)
                     mensajes_chat = [
-                        {"role": "system", "content": f"Eres el narrador de LEGACY. El jugador hizo: {accion}. Resultado mecánico: {msg_determinista}. Narrá en 2-3 oraciones inmersivas lo que pasó. Responde SOLO con texto narrativo, sin JSON."},
+                        {"role": "system", "content": f"Eres el narrador de LEGACY. El jugador hizo: {accion}. Resultado: {msg_determinista}. Narrá en 2-3 oraciones inmersivas lo que pasó. Responde SOLO con texto narrativo."},
                         {"role": "user", "content": f"Contexto: {contexto}"}
                     ]
                     respuesta_raw = prompts.llamar_llm(mensajes_chat, 0, "")
-                    json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                    if json_data.get("narrativa") and json_data["narrativa"] != respuesta_raw:
-                        narrativa_final = json_data["narrativa"]
-                    elif len(respuesta_raw.strip()) > 20 and "dificultades técnicas" not in respuesta_raw:
-                        narrativa_final = respuesta_raw
+                    
+                    # Verificar si es el mensaje de fallback
+                    if "dificultades técnicas" in respuesta_raw:
+                        narrativa_final = msg_determinista
+                    else:
+                        json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                        if json_data.get("narrativa") and "dificultades técnicas" not in json_data["narrativa"]:
+                            narrativa_final = json_data["narrativa"]
+                        elif len(respuesta_raw.strip()) > 20:
+                            narrativa_final = respuesta_raw
                 except Exception as e:
                     logger.warning(f"IA de narración falló: {e}")
+                    narrativa_final = msg_determinista
                 
                 st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
                 estado["turno"] += 1
                 estado["energia"] = max(0, estado["energia"] - 10)
+                
+                # Verificar objetivos
+                objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
+                for obj_msg in objetivos_nuevos:
+                    st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
                 
                 evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
                 if evento_ocurrio:
@@ -316,7 +234,6 @@ else:
                     
                 st.rerun()
             else:
-                # Acción no determinista, la IA decide todo
                 with st.spinner("El Game Master está simulando..."):
                     contexto = prompts.generar_prompt_contexto(estado)
                     mensajes_chat = [
@@ -336,6 +253,10 @@ else:
                     if game_over:
                         st.session_state.game_over = game_over
                         
+                    objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
+                    for obj_msg in objetivos_nuevos:
+                        st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
+                    
                     evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
                     if evento_ocurrio:
                         st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
@@ -350,15 +271,16 @@ else:
                 
                 st.rerun()
 
-        # =====================================================================
-        # AVANZAR TIEMPO
-        # =====================================================================
         with st.expander("⏳ Dejar pasar el tiempo"):
             if st.button("⏭️ Avanzar 1 mes (Descansar)"):
                 estado["turno"] += 1
                 estado["energia"] = min(100, estado["energia"] + 30)
                 resumen = mechanics.procesar_economia(estado)
                 st.session_state.mensajes.append({"role": "assistant", "content": f"⏳ *Pasaste el tiempo descansando.*\n\n{resumen}"})
+                
+                objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
+                for obj_msg in objetivos_nuevos:
+                    st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
                 
                 evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
                 if evento_ocurrio:
@@ -370,21 +292,178 @@ else:
                     
                 st.rerun()
 
+    # =====================================================================
+    # PESTAÑA GOBIERNO (Con botón de postulación)
+    # =====================================================================
     with tab_gobierno:
         ui.render_tab_gobierno(estado)
+        st.divider()
         
+        if estado.get("cargo_politico") == "Ciudadano":
+            st.subheader("🗳️ Ingresar a la Política")
+            st.markdown("Postulate a un cargo público para comenzar tu carrera política.")
+            
+            if st.button("🗳️ Postularme a Diputado", type="primary", use_container_width=True):
+                accion = "postularme a diputado"
+                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
+                
+                # Verificar requisitos
+                if estado.get("reputacion", 0) < 30:
+                    st.session_state.mensajes.append({"role": "assistant", "content": "❌ **Requisitos insuficientes:** Necesitás al menos 30 de Reputación para postularte a Diputado. Tu reputación actual es 50."})
+                else:
+                    ok, msg = mechanics.calcular_exito_campana(estado, "Diputado")
+                    if ok:
+                        estado["cargo_politico"] = "Diputado"
+                        estado["turnos_en_poder"] = 0
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                
+                estado["turno"] += 1
+                estado["energia"] = max(0, estado["energia"] - 20)
+                st.rerun()
+
+    # =====================================================================
+    # PESTAÑA EMPRESAS (Con botón de fundación)
+    # =====================================================================
     with tab_empresas:
         ui.render_tab_empresas(estado)
+        st.divider()
         
+        st.subheader("🏢 Fundar Nueva Empresa")
+        st.markdown("Creá tu imperio corporativo. Cada tipo de empresa tiene diferentes requisitos y dividendos.")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("💻 Fundar Tech Startup\n(Costo: $250K | Req: 50 Negocios)", use_container_width=True):
+                accion = "fundar empresa tech"
+                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
+                
+                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
+                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                
+                if es_determinista:
+                    estado["turno"] += 1
+                    estado["energia"] = max(0, estado["energia"] - 15)
+                
+                st.rerun()
+        
+        with col2:
+            if st.button("🏠 Fundar Inmobiliaria\n(Costo: $500K | Req: 70 Negocios)", use_container_width=True):
+                accion = "fundar inmobiliaria"
+                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
+                
+                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
+                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                
+                if es_determinista:
+                    estado["turno"] += 1
+                    estado["energia"] = max(0, estado["energia"] - 15)
+                
+                st.rerun()
+        
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            if st.button("🏦 Fundar Banco\n(Costo: $1M | Req: 85 Negocios)", use_container_width=True):
+                accion = "fundar banco"
+                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
+                
+                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
+                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                
+                if es_determinista:
+                    estado["turno"] += 1
+                    estado["energia"] = max(0, estado["energia"] - 15)
+                
+                st.rerun()
+        
+        with col4:
+            if st.button("📊 Fundar Consultora\n(Costo: $100K | Req: 30 Negocios)", use_container_width=True):
+                accion = "fundar consultora"
+                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
+                
+                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
+                st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
+                
+                if es_determinista:
+                    estado["turno"] += 1
+                    estado["energia"] = max(0, estado["energia"] - 15)
+                
+                st.rerun()
+
+    # =====================================================================
+    # PESTAÑA PRENSA
+    # =====================================================================
     with tab_prensa:
         ui.render_tab_prensa(estado)
-        
+
+    # =====================================================================
+    # PESTAÑA RIVALES
+    # =====================================================================
     with tab_rivales:
         ui.render_tab_rivales(estado)
-        
+
+    # =====================================================================
+    # PESTAÑA FAMILIA
+    # =====================================================================
     with tab_vida:
         ui.render_tab_vida(estado)
 
+    # =====================================================================
+    # PESTAÑA OBJETIVOS (NUEVA - Con recompensas)
+    # =====================================================================
+    with tab_objetivos:
+        st.subheader("🎯 Objetivos Dinásticos")
+        st.markdown("Completá objetivos para desbloquear bonificaciones permanentes para tu dinastía.")
+        st.divider()
+        
+        objetivos = estado.get("objetivos_dinasticos", [])
+        completados = estado.get("objetivos_completados", [])
+        bonificaciones = estado.get("bonificaciones_objetivos", [])
+        
+        if not objetivos:
+            st.info("No tenés objetivos dinásticos activos.")
+        else:
+            # Definición de recompensas
+            recompensas = {
+                "Alcanzar la Presidencia antes de los 55": {
+                    "nombre": "Mandato Legítimo",
+                    "desc": "Tu Aprobación Pública nunca puede bajar del 40%",
+                    "icono": "👑"
+                },
+                "Acumular $5M en patrimonio": {
+                    "nombre": "Magnate",
+                    "desc": "Tu próximo heredero empieza con +20 Negocios y $500K extra",
+                    "icono": "💰"
+                },
+                "Fundar una empresa Nivel 4": {
+                    "nombre": "Monopolio Familiar",
+                    "desc": "Todas tus empresas generan 25% más de dividendos",
+                    "icono": "🏢"
+                },
+                "Sobrevivir a 3 Crisis Nacionales": {
+                    "nombre": "Acero Templado",
+                    "desc": "Tu Salud Mental y Física no bajan por escándalos",
+                    "icono": "🛡️"
+                }
+            }
+            
+            for obj in objetivos:
+                if obj in completados:
+                    recompensa = recompensas.get(obj, {})
+                    st.success(f"✅ **{obj}**\n\n🌟 **Recompensa desbloqueada:** {recompensa.get('icono', '✨')} {recompensa.get('nombre', 'Bonus')} - {recompensa.get('desc', 'Bonificación especial')}")
+                else:
+                    st.markdown(f"⬜ **{obj}**\n\n*Completá este objetivo para desbloquear una bonificación permanente.*")
+            
+            if bonificaciones:
+                st.divider()
+                st.subheader("🌟 Bonificaciones Activas")
+                for bonif in bonificaciones:
+                    st.info(f"✨ **{bonif}**")
+
+    # =====================================================================
+    # PESTAÑA LOGROS
+    # =====================================================================
     with tab_logros:
         st.subheader("🏆 Salón de Logros")
         st.markdown("Desbloqueá logros cumpliendo desafíos a lo largo de tu dinastía.")
@@ -399,5 +478,8 @@ else:
             else:
                 st.markdown(f"🔒 **???**: {logro_def['desc']}")
                 
+    # =====================================================================
+    # PESTAÑA GRÁFICOS
+    # =====================================================================
     with tab_graficos:
         ui.render_tab_graficos(estado)

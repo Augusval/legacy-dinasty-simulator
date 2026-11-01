@@ -543,3 +543,52 @@ def procesar_respuesta(
             game_over = "💀 **FIN DE UNA ERA:** Has fallecido. Es hora de que tu heredero tome el mando."
 
     return estado, narrativa, game_over
+
+# ==============================================================================
+# SISTEMA DE OBJETIVOS DINÁSTICOS CON RECOMPENSAS (v1.2.1)
+# ==============================================================================
+
+def verificar_objetivos_dinasticos(estado: Dict[str, Any]) -> List[str]:
+    """
+    Verifica si se completaron objetivos dinásticos y aplica recompensas.
+    Retorna lista de mensajes de objetivos completados.
+    """
+    mensajes = []
+    objetivos = estado.get("objetivos_dinasticos", [])
+    completados = set(estado.get("objetivos_completados", []))
+    bonificaciones = estado.get("bonificaciones_objetivos", [])
+    
+    for obj in objetivos:
+        if obj not in completados:
+            completado = False
+            
+            if obj == "Alcanzar la Presidencia antes de los 55":
+                if estado.get("cargo_politico") == "Presidente" and estado.get("edad", 100) < 55:
+                    completado = True
+                    estado.setdefault("bonificaciones_objetivos", []).append("Mandato Legítimo")
+                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Alcanzaste la Presidencia antes de los 55. Has desbloqueado: **Mandato Legítimo** - Tu Aprobación Pública nunca puede bajar del 40%.")
+            
+            elif obj == "Acumular $5M en patrimonio":
+                if estado.get("dinero_personal", 0) >= 5000000:
+                    completado = True
+                    estado.setdefault("bonificaciones_objetivos", []).append("Magnate")
+                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Acumulaste $5M en patrimonio. Has desbloqueado: **Magnate** - Tu próximo heredero empieza con +20 Negocios y $500K extra.")
+            
+            elif obj == "Fundar una empresa Nivel 4":
+                corporaciones = estado.get("corporaciones", {})
+                if any(emp.nivel >= 4 for emp in corporaciones.values() if hasattr(emp, 'nivel')):
+                    completado = True
+                    estado.setdefault("bonificaciones_objetivos", []).append("Monopolio Familiar")
+                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Tienes una empresa en Nivel 4. Has desbloqueado: **Monopolio Familiar** - Todas tus empresas generan 25% más de dividendos.")
+            
+            elif obj == "Sobrevivir a 3 Crisis Nacionales":
+                crisis_sobrevividas = estado.get("crisis_sobrevividas", 0)
+                if crisis_sobrevividas >= 3:
+                    completado = True
+                    estado.setdefault("bonificaciones_objetivos", []).append("Acero Templado")
+                    mensajes.append("🌟 **¡OBJETIVO DINÁSTICO CUMPLIDO!** Sobreviviste a 3 Crisis Nacionales. Has desbloqueado: **Acero Templado** - Tu Salud Mental y Física no bajan por escándalos.")
+            
+            if completado:
+                estado.setdefault("objetivos_completados", []).append(obj)
+    
+    return mensajes
