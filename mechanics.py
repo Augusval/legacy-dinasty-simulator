@@ -1,7 +1,7 @@
 import random
 from typing import Dict, Any, List, Tuple, Optional
 from entidades import Empresa, Hijo, Ministro, Medio, Rival
-from state import TIPOS_EMPRESA, PROVINCIAS, NOMBRES_PILA, APELLIDOS_ARGENTINOS
+from state import TIPOS_EMPRESA, PROVINCIAS, NOMBRES_PILA
 
 # ==============================================================================
 # CONFIGURACIÓN Y CONSTANTES LOCALES
