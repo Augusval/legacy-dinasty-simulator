@@ -16,12 +16,15 @@ logger = logging.getLogger(__name__)
 st.set_page_config(page_title="LEGACY", layout="wide", page_icon="📰")
 ui.inyectar_css()
 
+# Inicialización de Session State
 if "juego_iniciado" not in st.session_state:
     st.session_state.juego_iniciado = False
 if "mensajes" not in st.session_state:
     st.session_state.mensajes = []
 if "tutorial_visto" not in st.session_state:
     st.session_state.tutorial_visto = False
+if "procesando" not in st.session_state:
+    st.session_state.procesando = False  # FIX: Evita acciones duplicadas
 
 st.title("LEGACY - Crónicas Dinásticas")
 
@@ -66,7 +69,7 @@ if not st.session_state.juego_iniciado:
             del st.session_state.nombre_inicial
             del st.session_state.apellido_inicial
             
-            # Inicializar estado (ya viene limpio desde state.py)
+            # Inicializar estado (Balanceado desde state.py)
             estado = inicializar_estado(nombre, apellido, edad, genero, origen, ideologia, rasgo)
             estado["objetivos_dinasticos"] = objetivos
             estado["objetivos_completados"] = []
@@ -89,7 +92,6 @@ if not st.session_state.juego_iniciado:
                 
                 narrativa_inicial = json_data.get("narrativa", f"Bienvenido a LEGACY, {nombre} {apellido}. Tenés {edad} años y vivís en Argentina. Tu historia comienza ahora.")
                 
-                # FIX: Solo agregar al chat si la narrativa no está vacía
                 if narrativa_inicial and narrativa_inicial.strip():
                     st.session_state.mensajes.append({"role": "assistant", "content": narrativa_inicial})
                 
@@ -183,7 +185,7 @@ else:
         # Estados especiales (Juicio Político)
         if estado.get("juicio_politico_activo"):
             st.error("⚖️ **JUICIO POLÍTICO ACTIVO:** Tenés que defenderte o serás destituido.")
-            if st.button("🗣️ Discurso de Defensa (Cuesta 20 Reputación)", type="primary"):
+            if st.button("🗣️ Discurso de Defensa (Cuesta 20 Reputación)", type="primary", disabled=st.session_state.get("procesando", False)):
                 estado["juicio_politico_activo"] = False
                 estado["nivel_escandalo"] = 50
                 estado["reputacion"] = max(0, estado["reputacion"] - 20)
@@ -193,10 +195,17 @@ else:
 
         st.divider()
 
-        # Input del chat
-        accion = st.chat_input("Escribí tu acción... (ej: 'Estudiar política', 'Dar entrevista a Clarín')")
+        # FIX: Bloqueo de acciones duplicadas
+        esta_procesando = st.session_state.get("procesando", False)
         
-        if accion:
+        if esta_procesando:
+            st.info("⏳ El Game Master está procesando tu última acción. Por favor esperá un momento...")
+
+        # Input del chat (Deshabilitado si ya hay una acción en proceso)
+        accion = st.chat_input("Escribí tu acción... (ej: 'Estudiar política', 'Dar entrevista a Clarín')", disabled=esta_procesando)
+        
+        if accion and not esta_procesando:
+            st.session_state.procesando = True
             st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
             
             # 1. Intentar resolver con código puro (Action Router)
@@ -217,7 +226,6 @@ else:
                     logger.warning(f"IA de narración falló: {e}")
                     narrativa_final = msg_determinista
                 
-                # FIX: Solo agregar si no está vacío
                 if narrativa_final and narrativa_final.strip():
                     st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
                 
@@ -266,11 +274,14 @@ else:
             for logro in nuevos_logros:
                 st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
                 
+            # Liberar el bloqueo y recargar
+            st.session_state.procesando = False
             st.rerun()
 
-        # Botón para avanzar tiempo
+        # Botón para avanzar tiempo (También protegido contra doble clic)
         with st.expander("⏳ Dejar pasar el tiempo"):
-            if st.button("⏭️ Avanzar 1 mes (Descansar)"):
+            if st.button("⏭️ Avanzar 1 mes (Descansar)", disabled=esta_procesando):
+                st.session_state.procesando = True
                 estado["turno"] += 1
                 resumen = mechanics.procesar_economia(estado)
                 
@@ -291,6 +302,7 @@ else:
                 for logro in nuevos_logros:
                     st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
                     
+                st.session_state.procesando = False
                 st.rerun()
 
     # =====================================================================
@@ -304,7 +316,7 @@ else:
             st.subheader("🗳️ Ingresar a la Política")
             st.markdown("Postulate a un cargo público para comenzar tu carrera política.")
             
-            if st.button("🗳️ Postularme a Diputado", type="primary", use_container_width=True):
+            if st.button("🗳️ Postularme a Diputado", type="primary", use_container_width=True, disabled=st.session_state.get("procesando", False)):
                 accion = "postularme a diputado"
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
                 
@@ -330,11 +342,14 @@ else:
         st.subheader("🏢 Fundar Nueva Empresa")
         st.markdown("Creá tu imperio corporativo. Cada tipo de empresa tiene diferentes requisitos y dividendos.")
         
+        # Variable para deshabilitar botones si hay una acción en proceso
+        is_processing = st.session_state.get("procesando", False)
+        
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.button("💻 Fundar Tech Startup\n(Costo: $250K | Req: 50 Negocios)", use_container_width=True):
-                accion = "fundar empresa tech"
+            if st.button("💻 Fundar Tech Startup\n(Costo: $250K | Req: 50 Negocios)", use_container_width=True, disabled=is_processing):
+                accion = "fundar tech startup"
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
                 es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
                 if msg_determinista and msg_determinista.strip():
@@ -343,7 +358,7 @@ else:
                 st.rerun()
         
         with col2:
-            if st.button("🏠 Fundar Inmobiliaria\n(Costo: $500K | Req: 70 Negocios)", use_container_width=True):
+            if st.button("🏠 Fundar Inmobiliaria\n(Costo: $500K | Req: 70 Negocios)", use_container_width=True, disabled=is_processing):
                 accion = "fundar inmobiliaria"
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
                 es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
@@ -355,7 +370,7 @@ else:
         col3, col4 = st.columns(2)
         
         with col3:
-            if st.button("🏦 Fundar Banco\n(Costo: $1M | Req: 85 Negocios)", use_container_width=True):
+            if st.button("🏦 Fundar Banco\n(Costo: $1M | Req: 85 Negocios)", use_container_width=True, disabled=is_processing):
                 accion = "fundar banco"
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
                 es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
@@ -365,7 +380,7 @@ else:
                 st.rerun()
         
         with col4:
-            if st.button("📊 Fundar Consultora\n(Costo: $100K | Req: 30 Negocios)", use_container_width=True):
+            if st.button("📊 Fundar Consultora\n(Costo: $100K | Req: 30 Negocios)", use_container_width=True, disabled=is_processing):
                 accion = "fundar consultora"
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
                 es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)

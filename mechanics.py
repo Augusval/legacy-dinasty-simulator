@@ -10,16 +10,22 @@ import prompts
 logger = logging.getLogger(__name__)
 
 # ==============================================================================
-# CONFIGURACIÓN Y CONSTANTES LOCALES
+# CONFIGURACIÓN Y CONSTANTES LOCALES (ECONOMÍA REBALANCEADA)
 # ==============================================================================
 
 COSTO_VIDA_POR_NIVEL = {
-    1: 8000, 2: 15000, 3: 25000, 4: 45000, 5: 80000, 6: 150000,
+    1: 15000, 2: 25000, 3: 40000, 4: 70000, 5: 120000, 6: 200000,
 }
 
+# SUELDOS REDUCIDOS para que no sea tan fácil fundar empresas
 SALARIOS_BASE = {
-    "Desempleado": 0, "Junior Developer": 150000, "Asesor Político": 120000,
-    "Emprendedor": 100000, "Gerente": 450000, "Director": 800000, "CEO": 1500000,
+    "Desempleado": 0, 
+    "Junior Developer": 80000,  # Antes: 150000
+    "Asesor Político": 60000,   # Antes: 120000
+    "Emprendedor": 50000,       # Antes: 100000
+    "Gerente": 200000,          # Antes: 450000
+    "Director": 350000,         # Antes: 800000
+    "CEO": 600000,              # Antes: 1500000
 }
 
 FACCIONES_OPUESTAS = {
@@ -56,7 +62,7 @@ def procesar_economia(estado: Dict[str, Any]) -> str:
     resumen = []
     
     nivel_vida = estado.get("nivel_calidad_vida", 1)
-    costo_vida = COSTO_VIDA_POR_NIVEL.get(nivel_vida, 8000)
+    costo_vida = COSTO_VIDA_POR_NIVEL.get(nivel_vida, 15000)
     inflacion = estado.get("inflacion", 25.0) / 100.0
     costo_vida_real = int(costo_vida * (1 + inflacion))
     
@@ -155,7 +161,7 @@ def intentar_mejorar_vivienda(estado: Dict[str, Any]) -> Tuple[bool, str]:
     if nivel_actual >= 6:
         return False, "Ya vivís en la máxima categoría (Mansión)."
         
-    costo_mejora = COSTO_VIDA_POR_NIVEL.get(nivel_actual + 1, 15000) * 10
+    costo_mejora = COSTO_VIDA_POR_NIVEL.get(nivel_actual + 1, 25000) * 10
     
     if estado.get("dinero_personal", 0) < costo_mejora:
         return False, f"💸 Mudarse cuesta ${costo_mejora:,}. No tenés suficiente."
@@ -496,7 +502,7 @@ def verificar_objetivos_dinasticos(estado: Dict[str, Any]) -> List[str]:
     return mensajes
 
 # ==============================================================================
-# ROUTER DE ACCIONES DETERMINISTAS (Sin energía)
+# ROUTER DE ACCIONES DETERMINISTAS (FIX: Detecta "fundar consultora" sin "empresa")
 # ==============================================================================
 
 def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bool, str]:
@@ -556,7 +562,7 @@ def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bo
     return False, ""
 
 # ==============================================================================
-# PROCESADOR PRINCIPAL DE LA IA (Limpio de stats inútiles)
+# PROCESADOR PRINCIPAL DE LA IA
 # ==============================================================================
 
 def procesar_respuesta(

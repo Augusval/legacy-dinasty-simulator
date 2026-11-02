@@ -1,0 +1,20 @@
+[
+  "test_mechanics.py::TestEmpresas::test_fundar_empresa_exitosa",
+  "test_mechanics.py::TestEmpresas::test_fundar_empresa_siendo_presidente",
+  "test_mechanics.py::TestEmpresas::test_fundar_empresa_sin_dinero",
+  "test_mechanics.py::TestEmpresas::test_fundar_empresa_sin_habilidad",
+  "test_mechanics.py::TestHabilidadesYVida::test_estudiar_negocios",
+  "test_mechanics.py::TestHabilidadesYVida::test_estudiar_politica",
+  "test_mechanics.py::TestHabilidadesYVida::test_mejorar_vivienda",
+  "test_mechanics.py::TestHabilidadesYVida::test_mejorar_vivienda_sin_dinero",
+  "test_mechanics.py::TestNuevasFeaturesV12::test_desbloqueo_logro_magnate",
+  "test_mechanics.py::TestNuevasFeaturesV12::test_tension_facciones",
+  "test_mechanics.py::TestPoliticaYEconomia::test_campana_ganadora",
+  "test_mechanics.py::TestPoliticaYEconomia::test_campana_perdedora",
+  "test_mechanics.py::TestPoliticaYEconomia::test_escandalo_desata_juicio",
+  "test_mechanics.py::TestPoliticaYEconomia::test_procesar_economia_cobra_sueldo",
+  "test_mechanics.py::TestPoliticaYEconomia::test_proponer_ley_sin_cargo",
+  "test_mechanics.py::TestSanitizacion::test_accion_muy_corta",
+  "test_mechanics.py::TestSanitizacion::test_accion_valida",
+  "test_mechanics.py::TestSanitizacion::test_inyeccion_de_prompts"
+]
