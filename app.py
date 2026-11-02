@@ -3,6 +3,7 @@ import logging
 import streamlit as st
 import prompts
 import mechanics
+import time
 import ui
 from state import inicializar_estado, leer_hall_of_fame, NOMBRES_PILA
 from entidades import Empresa, Hijo, Ministro, Medio, Rival
@@ -188,13 +189,29 @@ else:
         
         if esta_procesando:
             st.info("⏳ El Game Master está procesando tu última acción. Por favor esperá...")
-
+                    # BOTÓN DE EMERGENCIA PARA DESBLOQUEAR
+            col_traba, col_info = st.columns([1, 5])
+            with col_traba:
+                if st.button("🔓 Forzar Desbloqueo", type="secondary", key="btn_desbloqueo"):
+                    st.session_state.procesando = False
+                    st.rerun()
         accion = st.chat_input("Escribí tu acción... (ej: 'Estudiar política', 'Pedir ascenso')", disabled=esta_procesando)
+        # TIMEOUT AUTOMÁTICO: Si está procesando hace más de 30 segundos, desbloquear
+        if esta_procesando:
+            ultimo_cambio = st.session_state.get("ultimo_cambio_procesando", time.time())
+            if time.time() - ultimo_cambio > 30:  # 30 segundos
+                logger.warning("Timeout detectado. Forzando desbloqueo...")
+                st.session_state.procesando = False
+                st.session_state.mensajes.append({"role": "assistant", "content": "⏰ **Timeout:** La acción tardó demasiado. El juego se recuperó automáticamente."})
+                st.rerun()
+            else:
+                st.session_state.ultimo_cambio_procesando = ultimo_cambio
         
         if accion and not esta_procesando:
             try:
                 # 1. Bloqueamos la UI inmediatamente
                 st.session_state.procesando = True
+                st.session_state.ultimo_cambio_procesando = time.time()
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
                 
                 # 2. Intentamos resolver con código puro (Action Router)
