@@ -17,11 +17,12 @@ COSTO_VIDA_POR_NIVEL = {
     1: 15000, 2: 25000, 3: 40000, 4: 70000, 5: 120000, 6: 200000,
 }
 
-# SUELDOS BALANCEADOS (Hard Mode Inicial)
+# SUELDOS BALANCEADOS
 SALARIOS_BASE = {
     "Desempleado": 0, 
     "Junior Developer": 30000,
-    "Asesor Político": 50000,
+    "Senior Developer": 60000,
+    "CTO": 120000,
     "Emprendedor": 35000,
     "Gerente": 150000,
     "Director": 300000,
@@ -32,15 +33,26 @@ SALARIOS_BASE = {
 REQUISITOS_TRABAJO = {
     "Desempleado": {"req_reputacion": 0, "req_tecnica": 0, "req_politica": 0, "req_negocios": 0},
     "Junior Developer": {"req_reputacion": 0, "req_tecnica": 20, "req_politica": 0, "req_negocios": 0},
-    "Asesor Político": {"req_reputacion": 40, "req_tecnica": 0, "req_politica": 30, "req_negocios": 0},
+    "Senior Developer": {"req_reputacion": 20, "req_tecnica": 50, "req_politica": 0, "req_negocios": 0},
+    "CTO": {"req_reputacion": 50, "req_tecnica": 80, "req_politica": 0, "req_negocios": 20},
     "Emprendedor": {"req_reputacion": 30, "req_tecnica": 0, "req_politica": 0, "req_negocios": 30},
     "Gerente": {"req_reputacion": 60, "req_tecnica": 0, "req_politica": 0, "req_negocios": 50},
     "Director": {"req_reputacion": 80, "req_tecnica": 0, "req_politica": 0, "req_negocios": 70},
     "CEO": {"req_reputacion": 95, "req_tecnica": 0, "req_politica": 0, "req_negocios": 85},
 }
 
-# Orden de progresión laboral
-ORDEN_TRABAJOS = ["Desempleado", "Junior Developer", "Asesor Político", "Emprendedor", "Gerente", "Director", "CEO"]
+# CAMINOS PROFESIONALES (Cadenas de ascenso lógicas)
+CAMINO_TECNICO = ["Desempleado", "Junior Developer", "Senior Developer", "CTO"]
+CAMINO_CORPORATIVO = ["Desempleado", "Emprendedor", "Gerente", "Director", "CEO"]
+
+# Mapeo de trabajo actual → siguiente ascenso
+ASCENSOS_VALIDOS = {
+    "Junior Developer": "Senior Developer",
+    "Senior Developer": "CTO",
+    "Emprendedor": "Gerente",
+    "Gerente": "Director",
+    "Director": "CEO",
+}
 
 FACCIONES_OPUESTAS = {
     "Militares": "Sindicatos",
@@ -68,14 +80,11 @@ def sanitizar_accion(texto: str) -> Tuple[bool, str]:
     return True, ""
 
 # ==============================================================================
-# SISTEMA LABORAL (NUEVO)
+# SISTEMA LABORAL (REFACTORIZADO)
 # ==============================================================================
 
 def intentar_buscar_trabajo(estado: Dict[str, Any], tipo_trabajo: str = None) -> Tuple[bool, str]:
-    """
-    El jugador busca trabajo. Si no especifica tipo, se le ofrece uno aleatorio
-    según sus stats. Si especifica, se postula a ese.
-    """
+    """El jugador busca trabajo. Si no especifica tipo, se le ofrece uno aleatorio según sus stats."""
     trabajo_actual = estado.get("trabajo_actual", "Desempleado")
     
     # Si ya tiene trabajo y no especificó tipo, ofrecer ascenso o cambio lateral
@@ -108,7 +117,7 @@ def intentar_buscar_trabajo(estado: Dict[str, Any], tipo_trabajo: str = None) ->
     return False, "No se pudo procesar la búsqueda de trabajo."
 
 def postularse_a_trabajo(estado: Dict[str, Any], tipo_trabajo: str) -> Tuple[bool, str]:
-    """Postulación a un trabajo específico. La IA decide si te contratan."""
+    """Postulación a un trabajo específico."""
     if tipo_trabajo not in REQUISITOS_TRABAJO:
         trabajos_validos = ", ".join(REQUISITOS_TRABAJO.keys())
         return False, f"Trabajo no válido. Opciones: {trabajos_validos}"
@@ -119,13 +128,6 @@ def postularse_a_trabajo(estado: Dict[str, Any], tipo_trabajo: str) -> Tuple[boo
     # No podés postularte al mismo trabajo
     if tipo_trabajo == trabajo_actual:
         return False, f"Ya trabajás como {tipo_trabajo}."
-    
-    # Verificar que no sea un descenso (salvo a Desempleado)
-    if tipo_trabajo != "Desempleado":
-        idx_actual = ORDEN_TRABAJOS.index(trabajo_actual) if trabajo_actual in ORDEN_TRABAJOS else 0
-        idx_nuevo = ORDEN_TRABAJOS.index(tipo_trabajo)
-        if idx_nuevo < idx_actual:
-            return False, f"No podés postularte a un cargo menor. Si querés dejar tu trabajo, usá *'renunciar'*."
     
     # Verificar requisitos mínimos
     fallos = []
@@ -152,7 +154,7 @@ def postularse_a_trabajo(estado: Dict[str, Any], tipo_trabajo: str) -> Tuple[boo
         exceso_habilidad += estado.get("habilidad_negocios", 0) - reqs["req_negocios"]
     
     prob_exito = 50 + exceso_reputacion + (exceso_habilidad * 0.5) + random.randint(-10, 10)
-    prob_exito = max(10, min(95, prob_exito))  # Entre 10% y 95%
+    prob_exito = max(10, min(95, prob_exito))
     
     tirada = random.randint(1, 100)
     
@@ -171,12 +173,11 @@ def intentar_pedir_ascenso(estado: Dict[str, Any]) -> Tuple[bool, str]:
     if trabajo_actual == "Desempleado":
         return False, "No podés pedir un ascenso si estás desempleado. Usá *'buscar trabajo'* primero."
     
-    if trabajo_actual == "CEO":
-        return False, "¡Ya sos el CEO! No hay nada más alto a lo que ascender. 👑"
+    # Verificar si existe un ascenso válido para este trabajo
+    if trabajo_actual not in ASCENSOS_VALIDOS:
+        return False, f"No hay un ascenso disponible desde {trabajo_actual}. Considerá cambiar de carrera."
     
-    # Determinar el siguiente trabajo en la progresión
-    idx_actual = ORDEN_TRABAJOS.index(trabajo_actual)
-    trabajo_siguiente = ORDEN_TRABAJOS[idx_actual + 1]
+    trabajo_siguiente = ASCENSOS_VALIDOS[trabajo_actual]
     reqs_siguiente = REQUISITOS_TRABAJO[trabajo_siguiente]
     
     # Verificar experiencia mínima (6 turnos en el puesto)
@@ -208,7 +209,7 @@ def intentar_pedir_ascenso(estado: Dict[str, Any]) -> Tuple[bool, str]:
     if reqs_siguiente["req_negocios"] > 0:
         exceso_habilidad += estado.get("habilidad_negocios", 0) - reqs_siguiente["req_negocios"]
     
-    bonus_experiencia = min(20, (turnos_en_trabajo - 6) * 2)  # +2% por turno extra, max 20%
+    bonus_experiencia = min(20, (turnos_en_trabajo - 6) * 2)
     
     prob_exito = 40 + exceso_reputacion * 2 + exceso_habilidad + bonus_experiencia + random.randint(-15, 15)
     prob_exito = max(10, min(90, prob_exito))
@@ -242,19 +243,11 @@ def verificar_despido(estado: Dict[str, Any]) -> Optional[str]:
     if trabajo_actual == "Desempleado":
         return None
     
-    # Escándalo alto = riesgo de despido
     if estado.get("nivel_escandalo", 0) > 70 and random.random() < 0.20:
         estado["trabajo_actual"] = "Desempleado"
         estado["turnos_en_trabajo"] = 0
         estado["ingreso_mensual"] = 0
         return "🚨 **¡TE DESPIDIERON!** Tu nivel de escándalo era demasiado alto para la empresa. Ahora estás desempleado."
-    
-    # Aprobación muy baja = riesgo de despido (para cargos públicos/políticos)
-    if trabajo_actual in ["Asesor Político"] and estado.get("aprobacion_publica", 50) < 20 and random.random() < 0.10:
-        estado["trabajo_actual"] = "Desempleado"
-        estado["turnos_en_trabajo"] = 0
-        estado["ingreso_mensual"] = 0
-        return "📉 **Te despidieron.** Tu baja aprobación pública hizo que perdieras tu puesto como Asesor Político."
     
     return None
 
@@ -284,7 +277,6 @@ def procesar_economia(estado: Dict[str, Any]) -> str:
     if sueldo_final > 0:
         resumen.append(f"💼 Sueldo ({trabajo}): +${sueldo_final:,}")
     
-    # Incrementar experiencia en el trabajo
     if trabajo != "Desempleado":
         estado["turnos_en_trabajo"] = estado.get("turnos_en_trabajo", 0) + 1
         
@@ -308,12 +300,10 @@ def procesar_economia(estado: Dict[str, Any]) -> str:
         
     estado["edad"] = estado.get("edad", 24) + 0.083
     
-    # Verificar despido
     msg_despido = verificar_despido(estado)
     if msg_despido:
         resumen.append(f"\n⚠️ {msg_despido}")
     
-    # Actualizar historial para gráficos
     estado.setdefault("historial_patrimonio", []).append(estado.get("dinero_personal", 0))
     estado.setdefault("historial_aprobacion", []).append(estado.get("aprobacion_publica", 50))
     
@@ -642,7 +632,7 @@ def procesar_evento_aleatorio(estado: Dict[str, Any]) -> Tuple[bool, str]:
     return False, ""
 
 # ==============================================================================
-# SISTEMA DE LOGROS
+# SISTEMA DE LOGROS (ACTUALIZADO CON NUEVOS CARGOS)
 # ==============================================================================
 
 LOGROS_DEFINICIONES = [
@@ -652,6 +642,7 @@ LOGROS_DEFINICIONES = [
     {"id": "aprobacion_alta", "nombre": "Amado por el Pueblo", "desc": "Alcanzar 90% de Aprobación", "check": lambda e: e.get("aprobacion_publica", 0) >= 90},
     {"id": "sobreviviente", "nombre": "Sobreviviente", "desc": "Sobrevivir a un Juicio Político", "check": lambda e: e.get("juicio_politico_sobrevivido", False)},
     {"id": "dinastia_larga", "nombre": "Legado Eterno", "desc": "Llegar a la Generación 3", "check": lambda e: e.get("generacion_actual", 1) >= 3},
+    {"id": "cto", "nombre": "Genio Técnico", "desc": "Alcanzar el puesto de CTO", "check": lambda e: e.get("trabajo_actual") == "CTO"},
     {"id": "ceo", "nombre": "Titán Corporativo", "desc": "Alcanzar el puesto de CEO", "check": lambda e: e.get("trabajo_actual") == "CEO"}
 ]
 
@@ -717,7 +708,7 @@ def verificar_objetivos_dinasticos(estado: Dict[str, Any]) -> List[str]:
     return mensajes
 
 # ==============================================================================
-# ROUTER DE ACCIONES DETERMINISTAS (ACTUALIZADO CON SISTEMA LABORAL)
+# ROUTER DE ACCIONES DETERMINISTAS (FIX: Acepta ofertas de la IA y Ascensos lógicos)
 # ==============================================================================
 
 def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bool, str]:
@@ -726,26 +717,21 @@ def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bo
     
     logger.info(f"Procesando acción: '{t}'")
     
-    # 1. ACCIONES LABORALES (NUEVO)
+    # 1. ACCIONES LABORALES
     if "renunciar" in t or "dejar trabajo" in t or "dejar el trabajo" in t:
         return intentar_renunciar(estado)
 
     if "pedir ascenso" in t or "ascender" in t or "promoción" in t or "promocion" in t:
         return intentar_pedir_ascenso(estado)
 
-    if "buscar trabajo" in t or "conseguir trabajo" in t or "buscar empleo" in t:
-        # Si menciona un cargo específico, pasarlo
-        tipo = None
-        for cargo in REQUISITOS_TRABAJO.keys():
-            if cargo.lower() in t:
-                tipo = cargo
-                break
-        return intentar_buscar_trabajo(estado, tipo)
-
-    if "postularme" in t or "postular" in t or "aplicar" in t:
+    # FIX: Detecta "aceptar oferta de senior developer" o "postularme a cto"
+    if "aceptar" in t or "oferta" in t or "buscar trabajo" in t or "conseguir trabajo" in t or "postular" in t or "aplicar" in t:
         for cargo in REQUISITOS_TRABAJO.keys():
             if cargo.lower() in t:
                 return postularse_a_trabajo(estado, cargo)
+        # Si dijo "buscar trabajo" a secas
+        if "buscar" in t or "trabajo" in t or "empleo" in t:
+            return intentar_buscar_trabajo(estado, None)
 
     # 2. Detectar fundación de empresas
     if "fundar" in t or "crear" in t or "abrir" in t:

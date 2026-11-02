@@ -145,7 +145,7 @@ else:
     ui.render_cabecera(estado)
     ui.render_sidebar(estado)
 
-    # Definición de pestañas (Agregamos "Trabajo")
+    # Definición de pestañas
     tab_cronicas, tab_trabajo, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_familia, tab_objetivos, tab_logros, tab_graficos = st.tabs([
         "📰 Portada", "💼 Trabajo", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🎯 Objetivos", "🏆 Logros", "📊 Gráficos"
     ])
@@ -163,7 +163,7 @@ else:
                 <h3 style="color: #d4af37; margin-top: 0;">📖 Cómo jugar LEGACY</h3>
                 <p>Bienvenido a tu dinastía política. Usá las pestañas de arriba para acceder a las diferentes mecánicas:</p>
                 <ul>
-                    <li>💼 <b>Trabajo:</b> Buscá empleo, pedí ascensos o renunciá para mejorar tu economía.</li>
+                    <li>💼 <b>Trabajo:</b> Buscá empleo, pedí ascensos o cambiá de carrera. ¡Vista interactiva!</li>
                     <li>🏛️ <b>Gobierno:</b> Postulate a cargos políticos y gestioná tu gabinete.</li>
                     <li>🏢 <b>Empresas:</b> Fundá y gestioná tu imperio corporativo.</li>
                     <li>📺 <b>Prensa:</b> Influí en la opinión pública a través de los medios.</li>
@@ -178,7 +178,7 @@ else:
                 st.rerun()
             st.stop()
 
-        # Historial de chat (FIX: Filtrar mensajes vacíos)
+        # Historial de chat
         with st.container(height=400):
             for msg in st.session_state.mensajes[-10:]:
                 if msg["content"] and msg["content"].strip():
@@ -198,7 +198,7 @@ else:
 
         st.divider()
 
-        # FIX: Bloqueo de acciones duplicadas
+        # Bloqueo de acciones duplicadas
         esta_procesando = st.session_state.get("procesando", False)
         
         if esta_procesando:
@@ -215,7 +215,6 @@ else:
             es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
             
             if es_determinista:
-                # La acción se ejecutó en código. Pedimos a la IA que la narre.
                 try:
                     contexto = prompts.generar_prompt_contexto(estado)
                     mensajes_chat = [
@@ -277,7 +276,6 @@ else:
             for logro in nuevos_logros:
                 st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
                 
-            # Liberar el bloqueo y recargar
             st.session_state.procesando = False
             st.rerun()
 
@@ -309,7 +307,7 @@ else:
                 st.rerun()
 
     # =====================================================================
-    # PESTAÑA TRABAJO (NUEVA)
+    # PESTAÑA TRABAJO (INTERACTIVA CON CHECKS VERDES/ROJOS)
     # =====================================================================
     with tab_trabajo:
         st.subheader("💼 Carrera Profesional")
@@ -326,42 +324,136 @@ else:
         col3.metric("Experiencia en el puesto", f"{turnos_en_trabajo} meses")
         
         st.divider()
-        st.markdown("**Acciones Laborales:**")
         
+        # Botones de acción rápida
+        st.markdown("**Acciones Rápidas:**")
         is_processing = st.session_state.get("procesando", False)
         
-        if trabajo_actual == "Desempleado":
-            if st.button("🔍 Buscar Trabajo (Automático)", type="primary", use_container_width=True, disabled=is_processing):
+        col_a, col_b, col_c = st.columns(3)
+        
+        with col_a:
+            if st.button("🔍 Buscar Trabajo", type="primary", use_container_width=True, disabled=is_processing):
                 ok, msg = mechanics.intentar_buscar_trabajo(estado)
                 if msg and msg.strip():
                     st.session_state.mensajes.append({"role": "assistant", "content": msg})
                 estado["turno"] += 1
                 st.session_state.procesando = False
                 st.rerun()
-        else:
-            col_a, col_b = st.columns(2)
-            with col_a:
-                if st.button("📈 Pedir Ascenso", type="primary", use_container_width=True, disabled=is_processing):
-                    ok, msg = mechanics.intentar_pedir_ascenso(estado)
-                    if msg and msg.strip():
-                        st.session_state.mensajes.append({"role": "assistant", "content": msg})
-                    estado["turno"] += 1
-                    st.session_state.procesando = False
-                    st.rerun()
-            with col_b:
-                if st.button("📤 Renunciar", use_container_width=True, disabled=is_processing):
-                    ok, msg = mechanics.intentar_renunciar(estado)
-                    if msg and msg.strip():
-                        st.session_state.mensajes.append({"role": "assistant", "content": msg})
-                    estado["turno"] += 1
-                    st.session_state.procesando = False
-                    st.rerun()
+        
+        with col_b:
+            if st.button("📈 Pedir Ascenso", type="primary", use_container_width=True, disabled=is_processing):
+                ok, msg = mechanics.intentar_pedir_ascenso(estado)
+                if msg and msg.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                estado["turno"] += 1
+                st.session_state.procesando = False
+                st.rerun()
+        
+        with col_c:
+            if st.button("📤 Renunciar", use_container_width=True, disabled=is_processing):
+                ok, msg = mechanics.intentar_renunciar(estado)
+                if msg and msg.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                estado["turno"] += 1
+                st.session_state.procesando = False
+                st.rerun()
 
         st.divider()
-        st.markdown("**Progresión Laboral Disponible:**")
+        st.markdown("**📊 Progresión Laboral Interactiva:**")
+        st.markdown("*Los checks verdes indican que cumplís los requisitos. Los rojos muestran lo que te falta.*")
+        st.markdown("")
+        
+        # Stats actuales del jugador
+        stats_jugador = {
+            "reputacion": estado.get("reputacion", 0),
+            "tecnica": estado.get("habilidad_tecnica", 0),
+            "politica": estado.get("habilidad_politica", 0),
+            "negocios": estado.get("habilidad_negocios", 0),
+        }
+        
+        # Renderizar cada trabajo con su estado visual
         for cargo, reqs in mechanics.REQUISITOS_TRABAJO.items():
-            if cargo == "Desempleado": continue
-            st.markdown(f"- **{cargo}**: Requiere Reputación {reqs['req_reputacion']}, Técnica {reqs['req_tecnica']}, Política {reqs['req_politica']}, Negocios {reqs['req_negocios']}")
+            if cargo == "Desempleado":
+                continue
+            
+            # Verificar si cumple todos los requisitos
+            cumple_todo = True
+            faltantes = []
+            
+            if stats_jugador["reputacion"] < reqs["req_reputacion"]:
+                cumple_todo = False
+                faltantes.append(f"Reputación: te falta {reqs['req_reputacion'] - stats_jugador['reputacion']}")
+            if stats_jugador["tecnica"] < reqs["req_tecnica"]:
+                cumple_todo = False
+                faltantes.append(f"Técnica: te falta {reqs['req_tecnica'] - stats_jugador['tecnica']}")
+            if stats_jugador["politica"] < reqs["req_politica"]:
+                cumple_todo = False
+                faltantes.append(f"Política: te falta {reqs['req_politica'] - stats_jugador['politica']}")
+            if stats_jugador["negocios"] < reqs["req_negocios"]:
+                cumple_todo = False
+                faltantes.append(f"Negocios: te falta {reqs['req_negocios'] - stats_jugador['negocios']}")
+            
+            # Determinar el estado visual
+            es_trabajo_actual = (cargo == trabajo_actual)
+            sueldo_cargo = mechanics.SALARIOS_BASE.get(cargo, 0)
+            
+            if es_trabajo_actual:
+                icono = "🟡"
+                estado_texto = "**← TRABAJO ACTUAL**"
+                color = "#d4af37"
+            elif cumple_todo:
+                icono = "✅"
+                estado_texto = "Disponible"
+                color = "#2ecc71"
+            else:
+                icono = "❌"
+                estado_texto = "Bloqueado"
+                color = "#e74c3c"
+            
+            # Renderizar la fila del cargo
+            st.markdown(f"""
+            <div style="background-color: #1a1d24; padding: 12px; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid {color};">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="font-size: 1.2em;">{icono}</span>
+                        <strong style="color: {color}; font-size: 1.1em;"> {cargo}</strong>
+                        <span style="color: #888; margin-left: 10px;">${sueldo_cargo:,}/mes</span>
+                        <span style="color: #666; margin-left: 10px; font-style: italic;">{estado_texto}</span>
+                    </div>
+            """, unsafe_allow_html=True)
+            
+            # Botón de postulación (solo si no es el actual y cumple requisitos)
+            if not es_trabajo_actual and cumple_todo:
+                st.markdown(f"""
+                    <div>
+                        <button onclick="document.querySelector('textarea[aria-label=\'Escribí tu acción...\']').value='postularme a {cargo.lower()}'; document.querySelector('button[kind=\'primary\']').click();" 
+                                style="background-color: #2ecc71; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                            Postularme
+                        </button>
+                    </div>
+                """, unsafe_allow_html=True)
+            elif not es_trabajo_actual and not cumple_todo:
+                st.markdown(f"""
+                    <div>
+                        <span style="color: #e74c3c; font-size: 0.9em;">🔒 Requiere: {', '.join(faltantes)}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Información del próximo ascenso
+        st.divider()
+        if trabajo_actual in mechanics.ASCENSOS_VALIDOS:
+            proximo_cargo = mechanics.ASCENSOS_VALIDOS[trabajo_actual]
+            reqs_proximo = mechanics.REQUISITOS_TRABAJO[proximo_cargo]
+            st.markdown(f"### 🎯 Próximo Ascenso: **{proximo_cargo}**")
+            st.markdown(f"- **Experiencia requerida:** 6 meses en {trabajo_actual} (llevás {turnos_en_trabajo})")
+            st.markdown(f"- **Requisitos:** Reputación {reqs_proximo['req_reputacion']}, Técnica {reqs_proximo['req_tecnica']}, Negocios {reqs_proximo['req_negocios']}")
+            
+            if turnos_en_trabajo < 6:
+                st.warning(f"⏳ Te faltan {6 - turnos_en_trabajo} meses de experiencia para poder pedir el ascenso.")
+        else:
+            st.info(f"🏆 ¡Alcanzaste el tope de tu carrera actual! Considerá renunciar y empezar un nuevo camino profesional.")
 
     # =====================================================================
     # PESTAÑA GOBIERNO
