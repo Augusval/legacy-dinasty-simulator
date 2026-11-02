@@ -17,15 +17,15 @@ COSTO_VIDA_POR_NIVEL = {
     1: 15000, 2: 25000, 3: 40000, 4: 70000, 5: 120000, 6: 200000,
 }
 
-# SUELDOS REDUCIDOS para que no sea tan fácil fundar empresas
+# SUELDOS BALANCEADOS (Hard Mode Inicial)
 SALARIOS_BASE = {
     "Desempleado": 0, 
-    "Junior Developer": 80000,  # Antes: 150000
-    "Asesor Político": 60000,   # Antes: 120000
-    "Emprendedor": 50000,       # Antes: 100000
-    "Gerente": 200000,          # Antes: 450000
-    "Director": 350000,         # Antes: 800000
-    "CEO": 600000,              # Antes: 1500000
+    "Junior Developer": 30000,   # Apenas sobrevive al principio
+    "Asesor Político": 50000,    
+    "Emprendedor": 35000,        
+    "Gerente": 150000,           # El primer gran salto de calidad de vida
+    "Director": 300000,          
+    "CEO": 500000,               
 }
 
 FACCIONES_OPUESTAS = {
