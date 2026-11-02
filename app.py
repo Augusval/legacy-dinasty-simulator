@@ -360,48 +360,55 @@ else:
         stats_jugador = {"reputacion": estado.get("reputacion", 0), "tecnica": estado.get("habilidad_tecnica", 0), "politica": estado.get("habilidad_politica", 0), "negocios": estado.get("habilidad_negocios", 0)}
         
         for cargo, reqs in mechanics.REQUISITOS_TRABAJO.items():
-            if cargo == "Desempleado": continue
+            if cargo == "Desempleado": 
+                continue
+                
             cumple_todo = True
             faltantes = []
-            if stats_jugador["reputacion"] < reqs["req_reputacion"]: cumple_todo = False; faltantes.append(f"Rep: {reqs['req_reputacion']}")
-            if stats_jugador["tecnica"] < reqs["req_tecnica"]: cumple_todo = False; faltantes.append(f"Tec: {reqs['req_tecnica']}")
-            if stats_jugador["politica"] < reqs["req_politica"]: cumple_todo = False; faltantes.append(f"Pol: {reqs['req_politica']}")
-            if stats_jugador["negocios"] < reqs["req_negocios"]: cumple_todo = False; faltantes.append(f"Neg: {reqs['req_negocios']}")
+            if stats_jugador["reputacion"] < reqs["req_reputacion"]: 
+                cumple_todo = False
+                faltantes.append(f"Rep: {reqs['req_reputacion']}")
+            if stats_jugador["tecnica"] < reqs["req_tecnica"]: 
+                cumple_todo = False
+                faltantes.append(f"Tec: {reqs['req_tecnica']}")
+            if stats_jugador["politica"] < reqs["req_politica"]: 
+                cumple_todo = False
+                faltantes.append(f"Pol: {reqs['req_politica']}")
+            if stats_jugador["negocios"] < reqs["req_negocios"]: 
+                cumple_todo = False
+                faltantes.append(f"Neg: {reqs['req_negocios']}")
             
             es_actual = (cargo == trabajo_actual)
             sueldo_cargo = mechanics.SALARIOS_BASE.get(cargo, 0)
-            icono = "🟡" if es_actual else ("✅" if cumple_todo else "❌")
-            color = "#d4af37" if es_actual else ("#2ecc71" if cumple_todo else "#e74c3c")
-            estado_texto = "← ACTUAL" if es_actual else ("Disponible" if cumple_todo else "Bloqueado")
             
-            st.markdown(f"""
-            <div style="background-color: #1a1d24; padding: 12px; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid {color};">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <span style="font-size: 1.2em;">{icono}</span>
-                        <strong style="color: {color}; font-size: 1.1em;"> {cargo}</strong>
-                        <span style="color: #888; margin-left: 10px;">${sueldo_cargo:,}/mes</span>
-                        <span style="color: #666; margin-left: 10px; font-style: italic;">{estado_texto}</span>
-                    </div>
-            """, unsafe_allow_html=True)
+            # Crear columna para el contenido principal
+            col_icono, col_info, col_boton = st.columns([0.5, 3, 1.5])
             
-            if not es_actual and cumple_todo:
-                st.markdown(f"""
-                    <div><button onclick="document.querySelector('textarea[aria-label*=\'Escribí\']').value='postularme a {cargo.lower()}'; document.querySelector('button[kind=\'primary\']').click();" style="background-color: #2ecc71; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">Postularme</button></div>
-                """, unsafe_allow_html=True)
-            elif not es_actual and not cumple_todo:
-                st.markdown(f"""<div><span style="color: #e74c3c; font-size: 0.9em;">🔒 Requiere: {', '.join(faltantes)}</span></div>""", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        st.divider()
-        if trabajo_actual in mechanics.ASCENSOS_VALIDOS:
-            proximo = mechanics.ASCENSOS_VALIDOS[trabajo_actual]
-            reqs_p = mechanics.REQUISITOS_TRABAJO[proximo]
-            st.markdown(f"### 🎯 Próximo Ascenso: **{proximo}**")
-            st.markdown(f"- Experiencia: 6 meses (llevás {turnos_en_trabajo})")
-            st.markdown(f"- Requisitos: Rep {reqs_p['req_reputacion']}, Tec {reqs_p['req_tecnica']}, Neg {reqs_p['req_negocios']}")
-            if turnos_en_trabajo < 6:
-                st.warning(f"⏳ Te faltan {6 - turnos_en_trabajo} meses de experiencia.")
+            with col_icono:
+                if es_actual:
+                    st.markdown("")
+                elif cumple_todo:
+                    st.markdown("✅")
+                else:
+                    st.markdown("❌")
+            
+            with col_info:
+                estado_texto = "← ACTUAL" if es_actual else ("Disponible" if cumple_todo else "Bloqueado")
+                color = "#d4af37" if es_actual else ("#2ecc71" if cumple_todo else "#e74c3c")
+                st.markdown(f"**<span style='color: {color}'>{cargo}</span>** - ${sueldo_cargo:,}/mes *({estado_texto})*", unsafe_allow_html=True)
+                if not es_actual and not cumple_todo:
+                    st.caption(f"🔒 Requiere: {', '.join(faltantes)}")
+            
+            with col_boton:
+                if not es_actual and cumple_todo:
+                    # BOTÓN DE STREAMLIT REAL (esto sí funciona)
+                    if st.button(f"Postularme", key=f"btn_postular_{cargo}", use_container_width=True):
+                        ok, msg = mechanics.postularse_a_trabajo(estado, cargo)
+                        if msg and msg.strip():
+                            st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                        estado["turno"] += 1
+                        st.session_state.procesando = False
+                        st.rerun()
 
     # =====================================================================
     # PESTAÑA GOBIERNO
