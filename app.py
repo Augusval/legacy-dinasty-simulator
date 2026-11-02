@@ -69,12 +69,11 @@ if not st.session_state.juego_iniciado:
             del st.session_state.nombre_inicial
             del st.session_state.apellido_inicial
             
-            # Inicializar estado
             estado = inicializar_estado(nombre, apellido, edad, genero, origen, ideologia, rasgo)
             estado["objetivos_dinasticos"] = objetivos
             estado["objetivos_completados"] = []
             estado["bonificaciones_objetivos"] = []
-            estado["turnos_en_trabajo"] = 0 # Inicializar experiencia laboral
+            estado["turnos_en_trabajo"] = 0
             
             st.session_state.estado = estado
             st.session_state.juego_iniciado = True
@@ -145,7 +144,6 @@ else:
     ui.render_cabecera(estado)
     ui.render_sidebar(estado)
 
-    # Definición de pestañas
     tab_cronicas, tab_trabajo, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_familia, tab_objetivos, tab_logros, tab_graficos = st.tabs([
         "📰 Portada", "💼 Trabajo", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🎯 Objetivos", "🏆 Logros", "📊 Gráficos"
     ])
@@ -156,36 +154,24 @@ else:
     with tab_cronicas:
         ui.render_titular(estado)
 
-        # Tutorial inicial
         if not st.session_state.tutorial_visto:
             st.markdown("""
             <div style="background-color: #1a1d24; border-left: 5px solid #d4af37; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
                 <h3 style="color: #d4af37; margin-top: 0;">📖 Cómo jugar LEGACY</h3>
-                <p>Bienvenido a tu dinastía política. Usá las pestañas de arriba para acceder a las diferentes mecánicas:</p>
-                <ul>
-                    <li>💼 <b>Trabajo:</b> Buscá empleo, pedí ascensos o cambiá de carrera. ¡Vista interactiva!</li>
-                    <li>🏛️ <b>Gobierno:</b> Postulate a cargos políticos y gestioná tu gabinete.</li>
-                    <li>🏢 <b>Empresas:</b> Fundá y gestioná tu imperio corporativo.</li>
-                    <li>📺 <b>Prensa:</b> Influí en la opinión pública a través de los medios.</li>
-                    <li>🎯 <b>Objetivos:</b> Revisá tus metas dinásticas y sus recompensas.</li>
-                </ul>
-                <p><i>También podés escribir cualquier acción en el chat de abajo.</i></p>
+                <p>Usá las pestañas de arriba para acceder a las diferentes mecánicas. También podés escribir acciones en el chat.</p>
             </div>
             """, unsafe_allow_html=True)
-            
             if st.button("✅ Entendido, comenzar a jugar", type="primary"):
                 st.session_state.tutorial_visto = True
                 st.rerun()
             st.stop()
 
-        # Historial de chat
         with st.container(height=400):
             for msg in st.session_state.mensajes[-10:]:
                 if msg["content"] and msg["content"].strip():
                     with st.chat_message(msg["role"]):
                         st.markdown(msg["content"])
 
-        # Estados especiales (Juicio Político)
         if estado.get("juicio_politico_activo"):
             st.error("⚖️ **JUICIO POLÍTICO ACTIVO:** Tenés que defenderte o serás destituido.")
             if st.button("🗣️ Discurso de Defensa (Cuesta 20 Reputación)", type="primary", disabled=st.session_state.get("procesando", False)):
@@ -198,120 +184,109 @@ else:
 
         st.divider()
 
-        # Bloqueo de acciones duplicadas
         esta_procesando = st.session_state.get("procesando", False)
         
         if esta_procesando:
-            st.info("⏳ El Game Master está procesando tu última acción. Por favor esperá un momento...")
+            st.info("⏳ El Game Master está procesando tu última acción. Por favor esperá...")
 
-        # Input del chat
-        accion = st.chat_input("Escribí tu acción... (ej: 'Estudiar política', 'Pedir ascenso', 'Dar entrevista a Clarín')", disabled=esta_procesando)
+        accion = st.chat_input("Escribí tu acción... (ej: 'Estudiar política', 'Pedir ascenso')", disabled=esta_procesando)
         
         if accion and not esta_procesando:
-            st.session_state.procesando = True
-            st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-            
-            # 1. Intentar resolver con código puro (Action Router)
-            es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-            
-            if es_determinista:
-                try:
-                    contexto = prompts.generar_prompt_contexto(estado)
-                    mensajes_chat = [
-                        {"role": "system", "content": f"Eres el narrador de LEGACY. El jugador hizo: {accion}. Resultado mecánico: {msg_determinista}. Narrá en 2-3 oraciones inmersivas lo que pasó. Responde en JSON: {{\"narrativa\": \"texto\", \"efectos\": {{}}}}"},
-                        {"role": "user", "content": f"Contexto: {contexto}"}
-                    ]
-                    respuesta_raw = prompts.llamar_llm(mensajes_chat, 0, "")
-                    json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                    narrativa_final = json_data.get("narrativa", msg_determinista)
-                except Exception as e:
-                    logger.warning(f"IA de narración falló: {e}")
-                    narrativa_final = msg_determinista
+            try:
+                st.session_state.procesando = True
+                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
                 
-                if narrativa_final and narrativa_final.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
                 
-                estado["turno"] += 1
-                
-            else:
-                # 2. Acción libre, la IA decide todo
-                with st.spinner("El Game Master está simulando..."):
-                    contexto = prompts.generar_prompt_contexto(estado)
-                    mensajes_chat = [
-                        {"role": "system", "content": prompts.construir_sistema(estado["nombre"], estado["edad"], "Historia...", estado["rasgo"], "Origen", estado["ideologia"])},
-                        {"role": "system", "content": f"CONTEXTO ACTUAL:\n{contexto}"},
-                        *st.session_state.mensajes[-6:]
-                    ]
-                    
-                    respuesta_raw = prompts.llamar_llm(mensajes_chat, 7, "")
-                    json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                    
-                    estado, narrativa_final, game_over = mechanics.procesar_respuesta(
-                        json_data.get("narrativa", ""), 7, estado
-                    )
+                if es_determinista:
+                    try:
+                        contexto = prompts.generar_prompt_contexto(estado)
+                        mensajes_chat = [
+                            {"role": "system", "content": f"Eres el narrador. El jugador hizo: {accion}. Resultado: {msg_determinista}. Narrá en 2-3 oraciones. Responde en JSON: {{\"narrativa\": \"texto\", \"efectos\": {{}}}}"},
+                            {"role": "user", "content": f"Contexto: {contexto}"}
+                        ]
+                        respuesta_raw = prompts.llamar_llm(mensajes_chat, 0, "")
+                        json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                        narrativa_final = json_data.get("narrativa", msg_determinista)
+                    except Exception as e:
+                        logger.warning(f"IA de narración falló: {e}")
+                        narrativa_final = msg_determinista
                     
                     if narrativa_final and narrativa_final.strip():
                         st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
-                    if game_over:
-                        st.session_state.game_over = game_over
-                    
                     estado["turno"] += 1
+                else:
+                    with st.spinner("El Game Master está simulando..."):
+                        contexto = prompts.generar_prompt_contexto(estado)
+                        mensajes_chat = [
+                            {"role": "system", "content": prompts.construir_sistema(estado["nombre"], estado["edad"], "Historia...", estado["rasgo"], "Origen", estado["ideologia"])},
+                            {"role": "system", "content": f"CONTEXTO ACTUAL:\n{contexto}"},
+                            *st.session_state.mensajes[-6:]
+                        ]
+                        respuesta_raw = prompts.llamar_llm(mensajes_chat, 7, "")
+                        json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                        
+                        estado, narrativa_final, game_over = mechanics.procesar_respuesta(json_data.get("narrativa", ""), 7, estado)
+                        
+                        if narrativa_final and narrativa_final.strip():
+                            st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                        if game_over:
+                            st.session_state.game_over = game_over
+                        estado["turno"] += 1
 
-            # --- MECÁNICAS DINÁMICAS POST-ACCIÓN ---
-            objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
-            for obj_msg in objetivos_nuevos:
-                if obj_msg and obj_msg.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
-            
-            evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
-            if evento_ocurrio and msg_evento and msg_evento.strip():
-                st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
+                # Mecánicas post-acción
+                try:
+                    for obj_msg in mechanics.verificar_objetivos_dinasticos(estado):
+                        if obj_msg and obj_msg.strip(): st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
+                    
+                    evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
+                    if evento_ocurrio and msg_evento and msg_evento.strip():
+                        st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
 
-            acciones_rivales = mechanics.procesar_turno_rivales(estado)
-            for msg_rival in acciones_rivales:
-                if msg_rival and msg_rival.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
+                    for msg_rival in mechanics.procesar_turno_rivales(estado):
+                        if msg_rival and msg_rival.strip(): st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
 
-            nuevos_logros = mechanics.verificar_logros(estado)
-            for logro in nuevos_logros:
-                st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
+                    for logro in mechanics.verificar_logros(estado):
+                        st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
+                except Exception as e:
+                    logger.error(f"Error en mecánicas post-acción: {e}")
+
+            except Exception as e:
+                logger.error(f"Error crítico procesando acción: {e}")
+                st.error(f"❌ Error: {str(e)}. El juego se recuperó.")
                 
-            st.session_state.procesando = False
-            st.rerun()
+            finally:
+                # ESTO GARANTIZA QUE SIEMPRE SE DESBLOQUEE, INCLUSO SI HAY ERROR
+                st.session_state.procesando = False
+                st.rerun()
 
-        # Botón para avanzar tiempo
         with st.expander("⏳ Dejar pasar el tiempo"):
             if st.button("⏭️ Avanzar 1 mes (Descansar)", disabled=esta_procesando):
                 st.session_state.procesando = True
                 estado["turno"] += 1
                 resumen = mechanics.procesar_economia(estado)
+                if resumen and resumen.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": f"⏳ *Pasaste el tiempo.*\n\n{resumen}"})
                 
-                msg_tiempo = f"⏳ *Pasaste el tiempo.*\n\n{resumen}"
-                if msg_tiempo and msg_tiempo.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_tiempo})
-                
-                objetivos_nuevos = mechanics.verificar_objetivos_dinasticos(estado)
-                for obj_msg in objetivos_nuevos:
-                    if obj_msg and obj_msg.strip():
-                        st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
-                
-                evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
-                if evento_ocurrio and msg_evento and msg_evento.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
-                    
-                nuevos_logros = mechanics.verificar_logros(estado)
-                for logro in nuevos_logros:
-                    st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
+                try:
+                    for obj_msg in mechanics.verificar_objetivos_dinasticos(estado):
+                        if obj_msg and obj_msg.strip(): st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
+                    evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
+                    if evento_ocurrio and msg_evento and msg_evento.strip():
+                        st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
+                    for logro in mechanics.verificar_logros(estado):
+                        st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
+                except Exception:
+                    pass
                     
                 st.session_state.procesando = False
                 st.rerun()
 
     # =====================================================================
-    # PESTAÑA TRABAJO (INTERACTIVA CON CHECKS VERDES/ROJOS)
+    # PESTAÑA TRABAJO (INTERACTIVA)
     # =====================================================================
     with tab_trabajo:
         st.subheader("💼 Carrera Profesional")
-        
         trabajo_actual = estado.get("trabajo_actual", "Desempleado")
         turnos_en_trabajo = estado.get("turnos_en_trabajo", 0)
         sueldo_base = mechanics.SALARIOS_BASE.get(trabajo_actual, 0)
@@ -321,96 +296,54 @@ else:
         col1, col2, col3 = st.columns(3)
         col1.metric("Sueldo Base", f"${sueldo_base:,}")
         col2.metric("Sueldo Real (con bonus)", f"${sueldo_real:,}")
-        col3.metric("Experiencia en el puesto", f"{turnos_en_trabajo} meses")
-        
+        col3.metric("Experiencia", f"{turnos_en_trabajo} meses")
         st.divider()
         
-        # Botones de acción rápida
         st.markdown("**Acciones Rápidas:**")
         is_processing = st.session_state.get("procesando", False)
-        
         col_a, col_b, col_c = st.columns(3)
         
         with col_a:
             if st.button("🔍 Buscar Trabajo", type="primary", use_container_width=True, disabled=is_processing):
                 ok, msg = mechanics.intentar_buscar_trabajo(estado)
-                if msg and msg.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                if msg and msg.strip(): st.session_state.mensajes.append({"role": "assistant", "content": msg})
                 estado["turno"] += 1
                 st.session_state.procesando = False
                 st.rerun()
-        
         with col_b:
             if st.button("📈 Pedir Ascenso", type="primary", use_container_width=True, disabled=is_processing):
                 ok, msg = mechanics.intentar_pedir_ascenso(estado)
-                if msg and msg.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                if msg and msg.strip(): st.session_state.mensajes.append({"role": "assistant", "content": msg})
                 estado["turno"] += 1
                 st.session_state.procesando = False
                 st.rerun()
-        
         with col_c:
             if st.button("📤 Renunciar", use_container_width=True, disabled=is_processing):
                 ok, msg = mechanics.intentar_renunciar(estado)
-                if msg and msg.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                if msg and msg.strip(): st.session_state.mensajes.append({"role": "assistant", "content": msg})
                 estado["turno"] += 1
                 st.session_state.procesando = False
                 st.rerun()
 
         st.divider()
         st.markdown("**📊 Progresión Laboral Interactiva:**")
-        st.markdown("*Los checks verdes indican que cumplís los requisitos. Los rojos muestran lo que te falta.*")
-        st.markdown("")
+        stats_jugador = {"reputacion": estado.get("reputacion", 0), "tecnica": estado.get("habilidad_tecnica", 0), "politica": estado.get("habilidad_politica", 0), "negocios": estado.get("habilidad_negocios", 0)}
         
-        # Stats actuales del jugador
-        stats_jugador = {
-            "reputacion": estado.get("reputacion", 0),
-            "tecnica": estado.get("habilidad_tecnica", 0),
-            "politica": estado.get("habilidad_politica", 0),
-            "negocios": estado.get("habilidad_negocios", 0),
-        }
-        
-        # Renderizar cada trabajo con su estado visual
         for cargo, reqs in mechanics.REQUISITOS_TRABAJO.items():
-            if cargo == "Desempleado":
-                continue
-            
-            # Verificar si cumple todos los requisitos
+            if cargo == "Desempleado": continue
             cumple_todo = True
             faltantes = []
+            if stats_jugador["reputacion"] < reqs["req_reputacion"]: cumple_todo = False; faltantes.append(f"Rep: {reqs['req_reputacion']}")
+            if stats_jugador["tecnica"] < reqs["req_tecnica"]: cumple_todo = False; faltantes.append(f"Tec: {reqs['req_tecnica']}")
+            if stats_jugador["politica"] < reqs["req_politica"]: cumple_todo = False; faltantes.append(f"Pol: {reqs['req_politica']}")
+            if stats_jugador["negocios"] < reqs["req_negocios"]: cumple_todo = False; faltantes.append(f"Neg: {reqs['req_negocios']}")
             
-            if stats_jugador["reputacion"] < reqs["req_reputacion"]:
-                cumple_todo = False
-                faltantes.append(f"Reputación: te falta {reqs['req_reputacion'] - stats_jugador['reputacion']}")
-            if stats_jugador["tecnica"] < reqs["req_tecnica"]:
-                cumple_todo = False
-                faltantes.append(f"Técnica: te falta {reqs['req_tecnica'] - stats_jugador['tecnica']}")
-            if stats_jugador["politica"] < reqs["req_politica"]:
-                cumple_todo = False
-                faltantes.append(f"Política: te falta {reqs['req_politica'] - stats_jugador['politica']}")
-            if stats_jugador["negocios"] < reqs["req_negocios"]:
-                cumple_todo = False
-                faltantes.append(f"Negocios: te falta {reqs['req_negocios'] - stats_jugador['negocios']}")
-            
-            # Determinar el estado visual
-            es_trabajo_actual = (cargo == trabajo_actual)
+            es_actual = (cargo == trabajo_actual)
             sueldo_cargo = mechanics.SALARIOS_BASE.get(cargo, 0)
+            icono = "🟡" if es_actual else ("✅" if cumple_todo else "❌")
+            color = "#d4af37" if es_actual else ("#2ecc71" if cumple_todo else "#e74c3c")
+            estado_texto = "← ACTUAL" if es_actual else ("Disponible" if cumple_todo else "Bloqueado")
             
-            if es_trabajo_actual:
-                icono = "🟡"
-                estado_texto = "**← TRABAJO ACTUAL**"
-                color = "#d4af37"
-            elif cumple_todo:
-                icono = "✅"
-                estado_texto = "Disponible"
-                color = "#2ecc71"
-            else:
-                icono = "❌"
-                estado_texto = "Bloqueado"
-                color = "#e74c3c"
-            
-            # Renderizar la fila del cargo
             st.markdown(f"""
             <div style="background-color: #1a1d24; padding: 12px; border-radius: 8px; margin-bottom: 8px; border-left: 4px solid {color};">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -422,38 +355,23 @@ else:
                     </div>
             """, unsafe_allow_html=True)
             
-            # Botón de postulación (solo si no es el actual y cumple requisitos)
-            if not es_trabajo_actual and cumple_todo:
+            if not es_actual and cumple_todo:
                 st.markdown(f"""
-                    <div>
-                        <button onclick="document.querySelector('textarea[aria-label=\'Escribí tu acción...\']').value='postularme a {cargo.lower()}'; document.querySelector('button[kind=\'primary\']').click();" 
-                                style="background-color: #2ecc71; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                            Postularme
-                        </button>
-                    </div>
+                    <div><button onclick="document.querySelector('textarea[aria-label*=\'Escribí\']').value='postularme a {cargo.lower()}'; document.querySelector('button[kind=\'primary\']').click();" style="background-color: #2ecc71; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer; font-weight: bold;">Postularme</button></div>
                 """, unsafe_allow_html=True)
-            elif not es_trabajo_actual and not cumple_todo:
-                st.markdown(f"""
-                    <div>
-                        <span style="color: #e74c3c; font-size: 0.9em;">🔒 Requiere: {', '.join(faltantes)}</span>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+            elif not es_actual and not cumple_todo:
+                st.markdown(f"""<div><span style="color: #e74c3c; font-size: 0.9em;">🔒 Requiere: {', '.join(faltantes)}</span></div>""", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
         
-        # Información del próximo ascenso
         st.divider()
         if trabajo_actual in mechanics.ASCENSOS_VALIDOS:
-            proximo_cargo = mechanics.ASCENSOS_VALIDOS[trabajo_actual]
-            reqs_proximo = mechanics.REQUISITOS_TRABAJO[proximo_cargo]
-            st.markdown(f"### 🎯 Próximo Ascenso: **{proximo_cargo}**")
-            st.markdown(f"- **Experiencia requerida:** 6 meses en {trabajo_actual} (llevás {turnos_en_trabajo})")
-            st.markdown(f"- **Requisitos:** Reputación {reqs_proximo['req_reputacion']}, Técnica {reqs_proximo['req_tecnica']}, Negocios {reqs_proximo['req_negocios']}")
-            
+            proximo = mechanics.ASCENSOS_VALIDOS[trabajo_actual]
+            reqs_p = mechanics.REQUISITOS_TRABAJO[proximo]
+            st.markdown(f"### 🎯 Próximo Ascenso: **{proximo}**")
+            st.markdown(f"- Experiencia: 6 meses (llevás {turnos_en_trabajo})")
+            st.markdown(f"- Requisitos: Rep {reqs_p['req_reputacion']}, Tec {reqs_p['req_tecnica']}, Neg {reqs_p['req_negocios']}")
             if turnos_en_trabajo < 6:
-                st.warning(f"⏳ Te faltan {6 - turnos_en_trabajo} meses de experiencia para poder pedir el ascenso.")
-        else:
-            st.info(f"🏆 ¡Alcanzaste el tope de tu carrera actual! Considerá renunciar y empezar un nuevo camino profesional.")
+                st.warning(f"⏳ Te faltan {6 - turnos_en_trabajo} meses de experiencia.")
 
     # =====================================================================
     # PESTAÑA GOBIERNO
@@ -461,24 +379,17 @@ else:
     with tab_gobierno:
         ui.render_tab_gobierno(estado)
         st.divider()
-        
         if estado.get("cargo_politico") == "Ciudadano":
             st.subheader("🗳️ Ingresar a la Política")
-            st.markdown("Postulate a un cargo público para comenzar tu carrera política.")
-            
             if st.button("🗳️ Postularme a Diputado", type="primary", use_container_width=True, disabled=st.session_state.get("procesando", False)):
-                accion = "postularme a diputado"
-                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                
                 if estado.get("reputacion", 0) < 30:
-                    st.session_state.mensajes.append({"role": "assistant", "content": f"❌ **Requisitos insuficientes:** Necesitás al menos 30 de Reputación para postularte a Diputado. Tu reputación actual es {estado.get('reputacion', 50)}."})
+                    st.session_state.mensajes.append({"role": "assistant", "content": f"❌ Necesitás al menos 30 de Reputación. Tenés {estado.get('reputacion', 50)}."})
                 else:
                     ok, msg = mechanics.calcular_exito_campana(estado, "Diputado")
                     if ok:
                         estado["cargo_politico"] = "Diputado"
                         estado["turnos_en_poder"] = 0
                     st.session_state.mensajes.append({"role": "assistant", "content": msg})
-                
                 estado["turno"] += 1
                 st.rerun()
 
@@ -488,73 +399,45 @@ else:
     with tab_empresas:
         ui.render_tab_empresas(estado)
         st.divider()
-        
         st.subheader("🏢 Fundar Nueva Empresa")
-        st.markdown("Creá tu imperio corporativo. Cada tipo de empresa tiene diferentes requisitos y dividendos.")
-        
         is_processing = st.session_state.get("procesando", False)
         
         col1, col2 = st.columns(2)
-        
         with col1:
             if st.button("💻 Fundar Tech Startup\n(Costo: $250K | Req: 50 Negocios)", use_container_width=True, disabled=is_processing):
-                accion = "fundar tech startup"
-                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                if msg_determinista and msg_determinista.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                estado["turno"] += 1
-                st.rerun()
-        
+                ok, msg = mechanics.ejecutar_accion_determinista(estado, "fundar tech startup")
+                if msg and msg[1]: st.session_state.mensajes.append({"role": "assistant", "content": msg[1]})
+                estado["turno"] += 1; st.rerun()
         with col2:
             if st.button("🏠 Fundar Inmobiliaria\n(Costo: $500K | Req: 70 Negocios)", use_container_width=True, disabled=is_processing):
-                accion = "fundar inmobiliaria"
-                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                if msg_determinista and msg_determinista.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                estado["turno"] += 1
-                st.rerun()
+                ok, msg = mechanics.ejecutar_accion_determinista(estado, "fundar inmobiliaria")
+                if msg and msg[1]: st.session_state.mensajes.append({"role": "assistant", "content": msg[1]})
+                estado["turno"] += 1; st.rerun()
         
         col3, col4 = st.columns(2)
-        
         with col3:
             if st.button("🏦 Fundar Banco\n(Costo: $1M | Req: 85 Negocios)", use_container_width=True, disabled=is_processing):
-                accion = "fundar banco"
-                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                if msg_determinista and msg_determinista.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                estado["turno"] += 1
-                st.rerun()
-        
+                ok, msg = mechanics.ejecutar_accion_determinista(estado, "fundar banco")
+                if msg and msg[1]: st.session_state.mensajes.append({"role": "assistant", "content": msg[1]})
+                estado["turno"] += 1; st.rerun()
         with col4:
             if st.button("📊 Fundar Consultora\n(Costo: $100K | Req: 30 Negocios)", use_container_width=True, disabled=is_processing):
-                accion = "fundar consultora"
-                st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
-                es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
-                if msg_determinista and msg_determinista.strip():
-                    st.session_state.mensajes.append({"role": "assistant", "content": msg_determinista})
-                estado["turno"] += 1
-                st.rerun()
+                ok, msg = mechanics.ejecutar_accion_determinista(estado, "fundar consultora")
+                if msg and msg[1]: st.session_state.mensajes.append({"role": "assistant", "content": msg[1]})
+                estado["turno"] += 1; st.rerun()
 
     # =====================================================================
     # OTRAS PESTAÑAS
     # =====================================================================
     with tab_prensa:
         ui.render_tab_prensa(estado)
-
     with tab_rivales:
         ui.render_tab_rivales(estado)
-
     with tab_familia:
         ui.render_tab_familia(estado)
-
     with tab_objetivos:
         ui.render_tab_objetivos(estado)
-
     with tab_logros:
         ui.render_tab_logros(estado)
-                
     with tab_graficos:
         ui.render_tab_graficos(estado)

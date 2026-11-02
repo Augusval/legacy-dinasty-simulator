@@ -1,67 +1,131 @@
-# Changelog
+# CHANGELOG - LEGACY: Crónicas Dinásticas
 
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 
-El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-1.0.0/),
-y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
+y este proyecto se adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.0] - 2026-11-02
+---
 
-### 🚀 Agregado
-- **Rivales Activos:** Los rivales políticos ahora toman decisiones propias cada turno (20% de probabilidad) usando IA contextual. Pueden lanzar denuncias, aliarse con facciones o intentar golpes.
-- **Eventos Aleatorios Sorpresivos:** 15% de probabilidad por turno de que ocurra un evento inesperado generado por IA (crisis económicas, escándalos de aliados, desastres naturales, oportunidades).
-- **Tensión Dinámica de Facciones:** Si una facción sube mucho (>75), la facción opuesta baja automáticamente 10 puntos (ej: acercarse a Militares molesta a Sindicatos).
-- **Sistema de Logros:** 6 logros desbloqueables automáticamente (Magnate, Joven Promesa, Empresario, Amado por el Pueblo, Sobreviviente, Legado Eterno).
-- **Logging Profesional:** Sistema de logs con `logging` de Python que registra errores, intentos de IA y eventos críticos en `error.log`.
-- **Reintentos de IA:** Sistema de 3 reintentos automáticos con fallback elegante si la IA falla, evitando que el juego se rompa.
-- **Nueva Pestaña de Logros:** UI dedicada para mostrar logros desbloqueados y bloqueados.
-- **4 Tests Nuevos:** Tests para tensión de facciones y desbloqueo de logros (total: 20 tests).
+## [1.4.0] - 2026-11-02
 
-### 🔄 Cambiado
-- `prompts.py` ahora incluye generadores de prompts para eventos aleatorios, acciones de rivales y tensión de facciones.
-- `mechanics.py` integrado con las nuevas funciones dinámicas que se ejecutan al pasar el tiempo.
-- `app.py` actualizado para llamar a las nuevas mecánicas y mostrar la pestaña de logros.
+### 🎉 Añadido
+- **Sistema Laboral Interactivo**: Nueva pestaña "💼 Trabajo" con progresión visual de carreras
+- **Dos caminos profesionales**: Camino Técnico (Junior Dev → Senior Dev → CTO) y Camino Corporativo (Emprendedor → Gerente → Director → CEO)
+- **Checks visuales**: Verde (disponible), Rojo (bloqueado con requisitos detallados), Amarillo (trabajo actual)
+- **Botones de postulación directa**: Al lado de cada cargo disponible
+- **Panel de próximo ascenso**: Muestra experiencia requerida y stats necesarios
+- **Sistema de ascensos lógicos**: Ya no asciende de Junior Developer a Asesor Político
+- **Detección de ofertas de la IA**: Si la IA ofrece "Senior Developer", el jugador puede aceptarlo
+- **Nuevos logros**: "Genio Técnico" (alcanzar CTO) y "Titán Corporativo" (alcanzar CEO)
+- **Balance económico**: Sueldos reducidos para hacer el early-game más desafiante (Junior Developer: $30,000/mes)
 
-## [1.1.0] - 2026-11-02
-
-### 🚀 Agregado
-- **Nuevas Mecánicas de Juego:**
-  - Sistema de Ministros con Lealtad, Eficiencia y Corrupción.
-  - Sistema de Prensa y Medios de Comunicación (Clarín, Página 12, TN) con posturas ideológicas.
-  - Sistema de Escándalo y Juicio Político (Game Over por destitución).
-  - Mecánica real para fundar y escalar Empresas (Consultora, Tech, Inmobiliaria, Banco).
-  - Habilidades diferenciadas (Técnica, Política, Negocios) con impacto real en la economía y política.
-- **Arquitectura y Código:**
-  - Nuevo archivo `entidades.py` usando Dataclasses tipadas (`Empresa`, `Hijo`, `Ministro`, `Medio`, `Rival`).
-  - Implementación de `Action Router` en `mechanics.py` para resolver acciones deterministas sin gastar tokens de IA.
-  - Pipeline de CI/CD con GitHub Actions (`ci-tests.yml`) para ejecución automática de tests.
-  - Dashboard de métricas históricas con Plotly (Patrimonio vs. Aprobación de doble eje).
-- **Testing:**
-  - 16 tests unitarios en `test_mechanics.py` cubriendo empresas, habilidades, economía y política.
-
-### 🔄 Cambiado
-- **Refactorización Masiva:**
-  - `app.py` reducido de ~500 líneas a ~150 líneas (pura orquestación).
-  - `mechanics.py` reescrito con funciones puras y desacopladas.
-  - `state.py` ahora maneja la inicialización inteligente con modificadores de Origen, Rasgo e Ideología.
-  - `ui.py` separado en funciones de renderizado declarativo.
-- **Balance de Juego:**
-  - Objetivos dinásticos rebalanceados para ser alcanzables pero desafiantes.
-  - El origen y el rasgo del personaje ahora otorgan stats y modificadores iniciales reales.
-
-### 🗑️ Eliminado
-- `data.py` (Constantes redistribuidas a `state.py` y `entidades.py`).
-- Más de 3000 líneas de código spaghetti, hardcodeo y lógica duplicada en la UI.
+### 🔧 Cambiado
+- **Estructura de progresión laboral**: De línea única a dos caminos separados (Técnico y Corporativo)
+- **UI de pestaña Trabajo**: De lista de texto a interfaz interactiva con colores y botones
+- **Router de acciones**: Ahora detecta "aceptar oferta de [cargo]" y "postularme a [cargo]"
 
 ### 🐛 Corregido
-- Bug donde los nombres aleatorios se reseteaban al hacer clic en el formulario (uso de `session_state`).
-- Las habilidades de Política y Negocios ahora afectan correctamente las campañas y los dividendos.
-- Errores de parsing de JSON de la IA manejados con `extraer_json_de_respuesta` robusto.
+- **Bug de ascensos ilógicos**: Junior Developer ya no asciende a Asesor Político
+- **Bug de ofertas de IA**: Las ofertas de trabajos como "Senior Developer" ahora son aceptables
+- **Bug de acciones duplicadas**: Sistema de bloqueo cuando se procesa una acción
 
-## [1.0.0] - 2026-10-01
+---
 
-### 🚀 Agregado
-- Versión inicial del simulador.
-- Integración básica con Groq API (Llama 3).
-- Sistema de turnos, economía básica y campañas electorales.
-- Deploy inicial en Streamlit Cloud.
+## [1.3.0] - 2026-11-01
+
+### 🎉 Añadido
+- **Sistema de fallback procedural**: Cuando la IA falla, el juego usa narrativa generada por código
+- **Resiliencia del sistema**: El juego nunca se rompe, incluso si Groq está caído
+
+### 🔧 Cambiado
+- **Eliminación de stats innecesarias**: Removidas Energía, Salud Física y Salud Mental de la UI
+- **Simplificación de UI**: Sidebar más limpia, solo stats que impactan gameplay
+- **Modelo de IA actualizado**: Migración de modelos descontinuados de Groq
+
+### 🐛 Corregido
+- **Bug de mensajes vacíos**: El chat ya no muestra burbujas en blanco
+- **Bug de router de acciones**: "Fundar consultora" ahora funciona sin requerir la palabra "empresa"
+- **Bug de Rival**: Agregado parámetro `cargo` faltante en inicialización
+
+### 🧪 Testing
+- **18 tests pasando**: Suite de tests actualizada para reflejar cambios de UI
+
+---
+
+## [1.2.0] - 2026-10-28
+
+### 🎉 Añadido
+- **Sistema de Facciones**: Militares, Sindicatos, Empresarios, Iglesia, Populistas
+- **Tensión dinámica de facciones**: Si una facción sube mucho, la opuesta baja automáticamente
+- **Sistema de Logros**: 6 logros desbloqueables (Magnate, Joven Promesa, Empresario, etc.)
+- **Objetivos Dinásticos**: Metas a largo plazo con recompensas permanentes
+- **Sistema de Ministros**: Gabinete con eficiencia, corrupción y lealtad
+- **Eventos aleatorios**: 15% de probabilidad por turno de eventos inesperados
+- **Acciones de rivales**: Los rivales actúan con 20% de probabilidad por turno
+- **Sistema de Juicio Político**: Si el escándalo llega a 100%, se activa juicio con 3 turnos para defenderse
+- **Gráficos de progreso**: Historial de patrimonio y aprobación pública
+- **Salón de la Fama**: Top 5 dinastías con más puntos
+
+### 🔧 Cambiado
+- **Economía**: Sistema de dividendos de empresas, inflación dinámica, costo de vida por nivel
+- **Política**: Campañas electorales con cálculo de votos basado en reputación, habilidad política y facciones
+- **Prensa**: Interacción con medios (pautas publicitarias, entrevistas con éxito/fracaso)
+
+---
+
+## [1.1.0] - 2026-10-20
+
+### 🎉 Añadido
+- **Sistema de empresas**: 4 tipos (Tech Startup, Inmobiliaria, Banco, Consultora)
+- **Sistema de vivienda**: 6 niveles de calidad de vida
+- **Sistema de estudio**: 3 enfoques (Técnica, Política, Negocios)
+- **Sistema de medios de comunicación**: Clarín, La Nación, Página/12
+- **Sistema de rivales**: Opositores con poder y secretos
+- **Sistema de familia**: Generaciones dinásticas, herederos, matrimonio
+- **Tutorial inicial**: Explicación de mecánicas al comenzar el juego
+
+### 🔧 Cambiado
+- **UI**: Sistema de pestañas (Portada, Gobierno, Empresas, Prensa, Rivales, Familia, Objetivos, Logros, Gráficos)
+- **Narrativa**: La IA genera contexto inmersivo basado en stats actuales
+- **Game Over**: Sistema de legado con biografía descargable y continuación dinástica
+
+---
+
+## [1.0.0] - 2026-10-15
+
+### 🎉 Añadido
+- **Simulador de dinastía política/empresarial**: Juego de rol narrativo con IA
+- **Sistema de creación de personaje**: Nombre, apellido, edad, género, origen, ideología, rasgo
+- **Stats base**: Reputación, Aprobación Pública, Escándalo, Habilidades
+- **Sistema de cargos políticos**: Ciudadano → Diputado → Gobernador → Presidente
+- **Integración con Groq API**: Modelos Llama para narrativa dinámica
+- **Sistema de turnos**: Cada acción avanza el tiempo y procesa economía
+- **Persistencia de estado**: Session state de Streamlit
+- **Deploy en Streamlit Cloud**: App web accesible públicamente
+
+### 🛠️ Tecnologías
+- **Backend**: Python 3.14
+- **Framework**: Streamlit 1.38.0
+- **IA**: Groq API (modelos Llama 3)
+- **Testing**: pytest
+- **Versionado**: Git + GitHub
+- **Deploy**: Streamlit Cloud
+
+---
+
+## Notas de Desarrollo
+
+### Filosofía de Diseño
+- **Resiliencia primero**: El juego nunca se rompe, incluso si la IA falla
+- **Progresión significativa**: Cada decisión tiene consecuencias a largo plazo
+- **Narrativa inmersiva**: La IA genera contexto rico basado en el estado del jugador
+- **Balance desafiante**: El early-game es difícil, los logros se sienten ganados
+
+### Futuras Mejoras (Backlog)
+- Sistema de préstamos bancarios
+- Mecánica de crisis nacionales (recesiones, guerras, pandemias)
+- Sistema de alianzas matrimoniales estratégicas
+- Eventos históricos de Argentina
+- Multijugador cooperativo
+- Modo "sandbox" sin objetivos fijos
