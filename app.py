@@ -193,58 +193,71 @@ else:
         
         if accion and not esta_procesando:
             try:
+                # 1. Bloqueamos la UI inmediatamente
                 st.session_state.procesando = True
                 st.session_state.mensajes.append({"role": "user", "content": f"🎯 {accion}"})
                 
+                # 2. Intentamos resolver con código puro (Action Router)
                 es_determinista, msg_determinista = mechanics.ejecutar_accion_determinista(estado, accion)
                 
                 if es_determinista:
                     try:
                         contexto = prompts.generar_prompt_contexto(estado)
                         mensajes_chat = [
-                            {"role": "system", "content": f"Eres el narrador. El jugador hizo: {accion}. Resultado: {msg_determinista}. Narrá en 2-3 oraciones. Responde en JSON: {{\"narrativa\": \"texto\", \"efectos\": {{}}}}"},
+                            {"role": "system", "content": f"Eres el narrador. El jugador hizo: {accion}. Resultado: {msg_determinista}. Narrá en 2-3 oraciones. Responde SOLO en JSON válido: {{\"narrativa\": \"texto\"}}"},
                             {"role": "user", "content": f"Contexto: {contexto}"}
                         ]
                         respuesta_raw = prompts.llamar_llm(mensajes_chat, 0, "")
                         json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
                         narrativa_final = json_data.get("narrativa", msg_determinista)
                     except Exception as e:
-                        logger.warning(f"IA de narración falló: {e}")
+                        logger.warning(f"IA de narración falló, usando mensaje directo: {e}")
                         narrativa_final = msg_determinista
                     
                     if narrativa_final and narrativa_final.strip():
                         st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
                     estado["turno"] += 1
+                    
                 else:
-                    with st.spinner("El Game Master está simulando..."):
-                        contexto = prompts.generar_prompt_contexto(estado)
-                        mensajes_chat = [
-                            {"role": "system", "content": prompts.construir_sistema(estado["nombre"], estado["edad"], "Historia...", estado["rasgo"], "Origen", estado["ideologia"])},
-                            {"role": "system", "content": f"CONTEXTO ACTUAL:\n{contexto}"},
-                            *st.session_state.mensajes[-6:]
-                        ]
-                        respuesta_raw = prompts.llamar_llm(mensajes_chat, 7, "")
-                        json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
-                        
-                        estado, narrativa_final, game_over = mechanics.procesar_respuesta(json_data.get("narrativa", ""), 7, estado)
-                        
-                        if narrativa_final and narrativa_final.strip():
-                            st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
-                        if game_over:
-                            st.session_state.game_over = game_over
-                        estado["turno"] += 1
+                    # 3. Acción libre, la IA (o el fallback) decide todo
+                    with st.spinner("El Game Master está simulando (esto puede tardar unos segundos)..."):
+                        try:
+                            contexto = prompts.generar_prompt_contexto(estado)
+                            mensajes_chat = [
+                                {"role": "system", "content": prompts.construir_sistema(estado["nombre"], estado["edad"], "Historia...", estado["rasgo"], "Origen", estado["ideologia"])},
+                                {"role": "system", "content": f"CONTEXTO ACTUAL:\n{contexto}"},
+                                *st.session_state.mensajes[-6:]
+                            ]
+                            
+                            # AQUÍ TU FUNCIÓN llamar_llm HACE SU MAGIA (REINTENTOS + FALLBACK)
+                            respuesta_raw = prompts.llamar_llm(mensajes_chat, 7, "")
+                            json_data = prompts.extraer_json_de_respuesta(respuesta_raw)
+                            
+                            estado, narrativa_final, game_over = mechanics.procesar_respuesta(json_data.get("narrativa", ""), 7, estado)
+                            
+                            if narrativa_final and narrativa_final.strip():
+                                st.session_state.mensajes.append({"role": "assistant", "content": narrativa_final})
+                            if game_over:
+                                st.session_state.game_over = game_over
+                            estado["turno"] += 1
+                            
+                        except Exception as e:
+                            logger.error(f"Error crítico en procesamiento de IA: {e}")
+                            st.session_state.mensajes.append({"role": "assistant", "content": "⚠️ **El Game Master se mareó:** Ocurrió un error inesperado, pero tu personaje está a salvo. Intentá de nuevo."})
 
-                # Mecánicas post-acción
+                # 4. Mecánicas post-acción (rivales, eventos, logros)
                 try:
                     for obj_msg in mechanics.verificar_objetivos_dinasticos(estado):
-                        if obj_msg and obj_msg.strip(): st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
+                        if obj_msg and obj_msg.strip(): 
+                            st.session_state.mensajes.append({"role": "assistant", "content": obj_msg})
                     
                     evento_ocurrio, msg_evento = mechanics.procesar_evento_aleatorio(estado)
                     if evento_ocurrio and msg_evento and msg_evento.strip():
                         st.session_state.mensajes.append({"role": "assistant", "content": msg_evento})
 
                     for msg_rival in mechanics.procesar_turno_rivales(estado):
-                        if msg_rival and msg_rival.strip(): st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
+                        if msg_rival and msg_rival.strip(): 
+                            st.session_state.mensajes.append({"role": "assistant", "content": msg_rival})
 
                     for logro in mechanics.verificar_logros(estado):
                         st.toast(f"🏆 Logro desbloqueado: {logro}!", icon="🎖️")
@@ -252,11 +265,11 @@ else:
                     logger.error(f"Error en mecánicas post-acción: {e}")
 
             except Exception as e:
-                logger.error(f"Error crítico procesando acción: {e}")
-                st.error(f"❌ Error: {str(e)}. El juego se recuperó.")
+                logger.error(f"Error inesperado en el bucle principal: {e}")
+                st.error(f"❌ Error: {str(e)}")
                 
             finally:
-                # ESTO GARANTIZA QUE SIEMPRE SE DESBLOQUEE, INCLUSO SI HAY ERROR
+                # 5. ESTO ES LO MÁS IMPORTANTE: SE EJECUTA SIEMPRE, INCLUSO SI HUBO ERROR
                 st.session_state.procesando = False
                 st.rerun()
 
