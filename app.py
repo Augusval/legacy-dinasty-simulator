@@ -69,11 +69,12 @@ if not st.session_state.juego_iniciado:
             del st.session_state.nombre_inicial
             del st.session_state.apellido_inicial
             
-            # Inicializar estado (Balanceado desde state.py)
+            # Inicializar estado
             estado = inicializar_estado(nombre, apellido, edad, genero, origen, ideologia, rasgo)
             estado["objetivos_dinasticos"] = objetivos
             estado["objetivos_completados"] = []
             estado["bonificaciones_objetivos"] = []
+            estado["turnos_en_trabajo"] = 0 # Inicializar experiencia laboral
             
             st.session_state.estado = estado
             st.session_state.juego_iniciado = True
@@ -144,8 +145,9 @@ else:
     ui.render_cabecera(estado)
     ui.render_sidebar(estado)
 
-    tab_cronicas, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_familia, tab_objetivos, tab_logros, tab_graficos = st.tabs([
-        "📰 Portada", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🎯 Objetivos", "🏆 Logros", "📊 Gráficos"
+    # Definición de pestañas (Agregamos "Trabajo")
+    tab_cronicas, tab_trabajo, tab_gobierno, tab_empresas, tab_prensa, tab_rivales, tab_familia, tab_objetivos, tab_logros, tab_graficos = st.tabs([
+        "📰 Portada", "💼 Trabajo", "🏛️ Gobierno", "🏢 Empresas", "📺 Prensa", "⚔️ Rivales", "👨‍👩‍👧 Familia", "🎯 Objetivos", "🏆 Logros", "📊 Gráficos"
     ])
 
     # =====================================================================
@@ -161,6 +163,7 @@ else:
                 <h3 style="color: #d4af37; margin-top: 0;">📖 Cómo jugar LEGACY</h3>
                 <p>Bienvenido a tu dinastía política. Usá las pestañas de arriba para acceder a las diferentes mecánicas:</p>
                 <ul>
+                    <li>💼 <b>Trabajo:</b> Buscá empleo, pedí ascensos o renunciá para mejorar tu economía.</li>
                     <li>🏛️ <b>Gobierno:</b> Postulate a cargos políticos y gestioná tu gabinete.</li>
                     <li>🏢 <b>Empresas:</b> Fundá y gestioná tu imperio corporativo.</li>
                     <li>📺 <b>Prensa:</b> Influí en la opinión pública a través de los medios.</li>
@@ -201,8 +204,8 @@ else:
         if esta_procesando:
             st.info("⏳ El Game Master está procesando tu última acción. Por favor esperá un momento...")
 
-        # Input del chat (Deshabilitado si ya hay una acción en proceso)
-        accion = st.chat_input("Escribí tu acción... (ej: 'Estudiar política', 'Dar entrevista a Clarín')", disabled=esta_procesando)
+        # Input del chat
+        accion = st.chat_input("Escribí tu acción... (ej: 'Estudiar política', 'Pedir ascenso', 'Dar entrevista a Clarín')", disabled=esta_procesando)
         
         if accion and not esta_procesando:
             st.session_state.procesando = True
@@ -278,7 +281,7 @@ else:
             st.session_state.procesando = False
             st.rerun()
 
-        # Botón para avanzar tiempo (También protegido contra doble clic)
+        # Botón para avanzar tiempo
         with st.expander("⏳ Dejar pasar el tiempo"):
             if st.button("⏭️ Avanzar 1 mes (Descansar)", disabled=esta_procesando):
                 st.session_state.procesando = True
@@ -304,6 +307,61 @@ else:
                     
                 st.session_state.procesando = False
                 st.rerun()
+
+    # =====================================================================
+    # PESTAÑA TRABAJO (NUEVA)
+    # =====================================================================
+    with tab_trabajo:
+        st.subheader("💼 Carrera Profesional")
+        
+        trabajo_actual = estado.get("trabajo_actual", "Desempleado")
+        turnos_en_trabajo = estado.get("turnos_en_trabajo", 0)
+        sueldo_base = mechanics.SALARIOS_BASE.get(trabajo_actual, 0)
+        sueldo_real = int(sueldo_base * (1 + estado.get("habilidad_tecnica", 0) / 100.0))
+        
+        st.markdown(f"### Puesto Actual: **{trabajo_actual}**")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Sueldo Base", f"${sueldo_base:,}")
+        col2.metric("Sueldo Real (con bonus)", f"${sueldo_real:,}")
+        col3.metric("Experiencia en el puesto", f"{turnos_en_trabajo} meses")
+        
+        st.divider()
+        st.markdown("**Acciones Laborales:**")
+        
+        is_processing = st.session_state.get("procesando", False)
+        
+        if trabajo_actual == "Desempleado":
+            if st.button("🔍 Buscar Trabajo (Automático)", type="primary", use_container_width=True, disabled=is_processing):
+                ok, msg = mechanics.intentar_buscar_trabajo(estado)
+                if msg and msg.strip():
+                    st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                estado["turno"] += 1
+                st.session_state.procesando = False
+                st.rerun()
+        else:
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("📈 Pedir Ascenso", type="primary", use_container_width=True, disabled=is_processing):
+                    ok, msg = mechanics.intentar_pedir_ascenso(estado)
+                    if msg and msg.strip():
+                        st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                    estado["turno"] += 1
+                    st.session_state.procesando = False
+                    st.rerun()
+            with col_b:
+                if st.button("📤 Renunciar", use_container_width=True, disabled=is_processing):
+                    ok, msg = mechanics.intentar_renunciar(estado)
+                    if msg and msg.strip():
+                        st.session_state.mensajes.append({"role": "assistant", "content": msg})
+                    estado["turno"] += 1
+                    st.session_state.procesando = False
+                    st.rerun()
+
+        st.divider()
+        st.markdown("**Progresión Laboral Disponible:**")
+        for cargo, reqs in mechanics.REQUISITOS_TRABAJO.items():
+            if cargo == "Desempleado": continue
+            st.markdown(f"- **{cargo}**: Requiere Reputación {reqs['req_reputacion']}, Técnica {reqs['req_tecnica']}, Política {reqs['req_politica']}, Negocios {reqs['req_negocios']}")
 
     # =====================================================================
     # PESTAÑA GOBIERNO
@@ -342,7 +400,6 @@ else:
         st.subheader("🏢 Fundar Nueva Empresa")
         st.markdown("Creá tu imperio corporativo. Cada tipo de empresa tiene diferentes requisitos y dividendos.")
         
-        # Variable para deshabilitar botones si hay una acción en proceso
         is_processing = st.session_state.get("procesando", False)
         
         col1, col2 = st.columns(2)

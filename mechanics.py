@@ -10,7 +10,7 @@ import prompts
 logger = logging.getLogger(__name__)
 
 # ==============================================================================
-# CONFIGURACIÓN Y CONSTANTES LOCALES (ECONOMÍA REBALANCEADA)
+# CONFIGURACIÓN Y CONSTANTES LOCALES
 # ==============================================================================
 
 COSTO_VIDA_POR_NIVEL = {
@@ -20,13 +20,27 @@ COSTO_VIDA_POR_NIVEL = {
 # SUELDOS BALANCEADOS (Hard Mode Inicial)
 SALARIOS_BASE = {
     "Desempleado": 0, 
-    "Junior Developer": 30000,   # Apenas sobrevive al principio
-    "Asesor Político": 50000,    
-    "Emprendedor": 35000,        
-    "Gerente": 150000,           # El primer gran salto de calidad de vida
-    "Director": 300000,          
-    "CEO": 500000,               
+    "Junior Developer": 30000,
+    "Asesor Político": 50000,
+    "Emprendedor": 35000,
+    "Gerente": 150000,
+    "Director": 300000,
+    "CEO": 500000,
 }
+
+# REQUISITOS DETALLADOS DE TRABAJOS
+REQUISITOS_TRABAJO = {
+    "Desempleado": {"req_reputacion": 0, "req_tecnica": 0, "req_politica": 0, "req_negocios": 0},
+    "Junior Developer": {"req_reputacion": 0, "req_tecnica": 20, "req_politica": 0, "req_negocios": 0},
+    "Asesor Político": {"req_reputacion": 40, "req_tecnica": 0, "req_politica": 30, "req_negocios": 0},
+    "Emprendedor": {"req_reputacion": 30, "req_tecnica": 0, "req_politica": 0, "req_negocios": 30},
+    "Gerente": {"req_reputacion": 60, "req_tecnica": 0, "req_politica": 0, "req_negocios": 50},
+    "Director": {"req_reputacion": 80, "req_tecnica": 0, "req_politica": 0, "req_negocios": 70},
+    "CEO": {"req_reputacion": 95, "req_tecnica": 0, "req_politica": 0, "req_negocios": 85},
+}
+
+# Orden de progresión laboral
+ORDEN_TRABAJOS = ["Desempleado", "Junior Developer", "Asesor Político", "Emprendedor", "Gerente", "Director", "CEO"]
 
 FACCIONES_OPUESTAS = {
     "Militares": "Sindicatos",
@@ -54,6 +68,197 @@ def sanitizar_accion(texto: str) -> Tuple[bool, str]:
     return True, ""
 
 # ==============================================================================
+# SISTEMA LABORAL (NUEVO)
+# ==============================================================================
+
+def intentar_buscar_trabajo(estado: Dict[str, Any], tipo_trabajo: str = None) -> Tuple[bool, str]:
+    """
+    El jugador busca trabajo. Si no especifica tipo, se le ofrece uno aleatorio
+    según sus stats. Si especifica, se postula a ese.
+    """
+    trabajo_actual = estado.get("trabajo_actual", "Desempleado")
+    
+    # Si ya tiene trabajo y no especificó tipo, ofrecer ascenso o cambio lateral
+    if trabajo_actual != "Desempleado" and tipo_trabajo is None:
+        return False, f"Ya trabajás como **{trabajo_actual}**. Usá *'pedir ascenso'* para buscar una promoción, o *'renunciar'* si querés cambiar de rumbo."
+    
+    # Si especificó un trabajo, postularse directamente
+    if tipo_trabajo:
+        return postularse_a_trabajo(estado, tipo_trabajo)
+    
+    # Si no especificó y está desempleado, ofrecer trabajos disponibles
+    if trabajo_actual == "Desempleado":
+        trabajos_disponibles = []
+        for trabajo, reqs in REQUISITOS_TRABAJO.items():
+            if trabajo == "Desempleado":
+                continue
+            if (estado.get("reputacion", 0) >= reqs["req_reputacion"] and
+                estado.get("habilidad_tecnica", 0) >= reqs["req_tecnica"] and
+                estado.get("habilidad_politica", 0) >= reqs["req_politica"] and
+                estado.get("habilidad_negocios", 0) >= reqs["req_negocios"]):
+                trabajos_disponibles.append(trabajo)
+        
+        if not trabajos_disponibles:
+            return False, "📭 No calificás para ningún trabajo disponible. Estudiá para subir tus habilidades o ganá reputación."
+        
+        # Ofrecer el trabajo de menor nivel que califique
+        trabajo_ofrecido = trabajos_disponibles[0]
+        return postularse_a_trabajo(estado, trabajo_ofrecido)
+    
+    return False, "No se pudo procesar la búsqueda de trabajo."
+
+def postularse_a_trabajo(estado: Dict[str, Any], tipo_trabajo: str) -> Tuple[bool, str]:
+    """Postulación a un trabajo específico. La IA decide si te contratan."""
+    if tipo_trabajo not in REQUISITOS_TRABAJO:
+        trabajos_validos = ", ".join(REQUISITOS_TRABAJO.keys())
+        return False, f"Trabajo no válido. Opciones: {trabajos_validos}"
+    
+    reqs = REQUISITOS_TRABAJO[tipo_trabajo]
+    trabajo_actual = estado.get("trabajo_actual", "Desempleado")
+    
+    # No podés postularte al mismo trabajo
+    if tipo_trabajo == trabajo_actual:
+        return False, f"Ya trabajás como {tipo_trabajo}."
+    
+    # Verificar que no sea un descenso (salvo a Desempleado)
+    if tipo_trabajo != "Desempleado":
+        idx_actual = ORDEN_TRABAJOS.index(trabajo_actual) if trabajo_actual in ORDEN_TRABAJOS else 0
+        idx_nuevo = ORDEN_TRABAJOS.index(tipo_trabajo)
+        if idx_nuevo < idx_actual:
+            return False, f"No podés postularte a un cargo menor. Si querés dejar tu trabajo, usá *'renunciar'*."
+    
+    # Verificar requisitos mínimos
+    fallos = []
+    if estado.get("reputacion", 0) < reqs["req_reputacion"]:
+        fallos.append(f"Reputación {reqs['req_reputacion']} (tenés {estado.get('reputacion', 0)})")
+    if estado.get("habilidad_tecnica", 0) < reqs["req_tecnica"]:
+        fallos.append(f"Técnica {reqs['req_tecnica']} (tenés {estado.get('habilidad_tecnica', 0)})")
+    if estado.get("habilidad_politica", 0) < reqs["req_politica"]:
+        fallos.append(f"Política {reqs['req_politica']} (tenés {estado.get('habilidad_politica', 0)})")
+    if estado.get("habilidad_negocios", 0) < reqs["req_negocios"]:
+        fallos.append(f"Negocios {reqs['req_negocios']} (tenés {estado.get('habilidad_negocios', 0)})")
+    
+    if fallos:
+        return False, f"❌ **No cumplís los requisitos para {tipo_trabajo}:**\n" + "\n".join(f"  • {f}" for f in fallos)
+    
+    # Calcular probabilidad de éxito
+    exceso_reputacion = estado.get("reputacion", 0) - reqs["req_reputacion"]
+    exceso_habilidad = 0
+    if reqs["req_tecnica"] > 0:
+        exceso_habilidad += estado.get("habilidad_tecnica", 0) - reqs["req_tecnica"]
+    if reqs["req_politica"] > 0:
+        exceso_habilidad += estado.get("habilidad_politica", 0) - reqs["req_politica"]
+    if reqs["req_negocios"] > 0:
+        exceso_habilidad += estado.get("habilidad_negocios", 0) - reqs["req_negocios"]
+    
+    prob_exito = 50 + exceso_reputacion + (exceso_habilidad * 0.5) + random.randint(-10, 10)
+    prob_exito = max(10, min(95, prob_exito))  # Entre 10% y 95%
+    
+    tirada = random.randint(1, 100)
+    
+    if tirada <= prob_exito:
+        estado["trabajo_actual"] = tipo_trabajo
+        estado["turnos_en_trabajo"] = 0
+        sueldo = SALARIOS_BASE.get(tipo_trabajo, 0)
+        return True, f"✅ **¡CONTRATADO!** Conseguiste el puesto de **{tipo_trabajo}** con un sueldo de ${sueldo:,}/mes. ¡Felicitaciones!"
+    else:
+        return False, f"❌ **Rechazado.** No te seleccionaron para {tipo_trabajo}. Seguí estudiando y ganando reputación para mejorar tus chances."
+
+def intentar_pedir_ascenso(estado: Dict[str, Any]) -> Tuple[bool, str]:
+    """El jugador pide un ascenso en su trabajo actual."""
+    trabajo_actual = estado.get("trabajo_actual", "Desempleado")
+    
+    if trabajo_actual == "Desempleado":
+        return False, "No podés pedir un ascenso si estás desempleado. Usá *'buscar trabajo'* primero."
+    
+    if trabajo_actual == "CEO":
+        return False, "¡Ya sos el CEO! No hay nada más alto a lo que ascender. 👑"
+    
+    # Determinar el siguiente trabajo en la progresión
+    idx_actual = ORDEN_TRABAJOS.index(trabajo_actual)
+    trabajo_siguiente = ORDEN_TRABAJOS[idx_actual + 1]
+    reqs_siguiente = REQUISITOS_TRABAJO[trabajo_siguiente]
+    
+    # Verificar experiencia mínima (6 turnos en el puesto)
+    turnos_en_trabajo = estado.get("turnos_en_trabajo", 0)
+    if turnos_en_trabajo < 6:
+        return False, f"⏳ Necesitás al menos 6 meses de experiencia en {trabajo_actual} para pedir un ascenso. Llevás {turnos_en_trabajo} meses."
+    
+    # Verificar requisitos del siguiente cargo
+    fallos = []
+    if estado.get("reputacion", 0) < reqs_siguiente["req_reputacion"]:
+        fallos.append(f"Reputación {reqs_siguiente['req_reputacion']} (tenés {estado.get('reputacion', 0)})")
+    if estado.get("habilidad_tecnica", 0) < reqs_siguiente["req_tecnica"]:
+        fallos.append(f"Técnica {reqs_siguiente['req_tecnica']} (tenés {estado.get('habilidad_tecnica', 0)})")
+    if estado.get("habilidad_politica", 0) < reqs_siguiente["req_politica"]:
+        fallos.append(f"Política {reqs_siguiente['req_politica']} (tenés {estado.get('habilidad_politica', 0)})")
+    if estado.get("habilidad_negocios", 0) < reqs_siguiente["req_negocios"]:
+        fallos.append(f"Negocios {reqs_siguiente['req_negocios']} (tenés {estado.get('habilidad_negocios', 0)})")
+    
+    if fallos:
+        return False, f"❌ **Aún no cumplís los requisitos para {trabajo_siguiente}:**\n" + "\n".join(f"  • {f}" for f in fallos)
+    
+    # Calcular probabilidad de ascenso
+    exceso_reputacion = estado.get("reputacion", 0) - reqs_siguiente["req_reputacion"]
+    exceso_habilidad = 0
+    if reqs_siguiente["req_tecnica"] > 0:
+        exceso_habilidad += estado.get("habilidad_tecnica", 0) - reqs_siguiente["req_tecnica"]
+    if reqs_siguiente["req_politica"] > 0:
+        exceso_habilidad += estado.get("habilidad_politica", 0) - reqs_siguiente["req_politica"]
+    if reqs_siguiente["req_negocios"] > 0:
+        exceso_habilidad += estado.get("habilidad_negocios", 0) - reqs_siguiente["req_negocios"]
+    
+    bonus_experiencia = min(20, (turnos_en_trabajo - 6) * 2)  # +2% por turno extra, max 20%
+    
+    prob_exito = 40 + exceso_reputacion * 2 + exceso_habilidad + bonus_experiencia + random.randint(-15, 15)
+    prob_exito = max(10, min(90, prob_exito))
+    
+    tirada = random.randint(1, 100)
+    
+    if tirada <= prob_exito:
+        estado["trabajo_actual"] = trabajo_siguiente
+        estado["turnos_en_trabajo"] = 0
+        sueldo = SALARIOS_BASE.get(trabajo_siguiente, 0)
+        return True, f"🎉 **¡ASCENDIDO!** Te promovieron a **{trabajo_siguiente}**. Tu nuevo sueldo es ${sueldo:,}/mes. ¡El esfuerzo dio sus frutos!"
+    else:
+        return False, f"😔 **Ascenso denegado.** La dirección decidió que aún no es momento. Seguí demostrando tu valía en {trabajo_actual}."
+
+def intentar_renunciar(estado: Dict[str, Any]) -> Tuple[bool, str]:
+    """El jugador renuncia a su trabajo actual."""
+    trabajo_actual = estado.get("trabajo_actual", "Desempleado")
+    
+    if trabajo_actual == "Desempleado":
+        return False, "Ya estás desempleado. No podés renunciar a algo que no tenés."
+    
+    estado["trabajo_actual"] = "Desempleado"
+    estado["turnos_en_trabajo"] = 0
+    estado["ingreso_mensual"] = 0
+    
+    return True, f"📤 **Renunciaste** a tu puesto de {trabajo_actual}. Ahora estás desempleado, pero libre para buscar nuevas oportunidades."
+
+def verificar_despido(estado: Dict[str, Any]) -> Optional[str]:
+    """Verifica si el jugador es despedido por bajo rendimiento o escándalo."""
+    trabajo_actual = estado.get("trabajo_actual", "Desempleado")
+    if trabajo_actual == "Desempleado":
+        return None
+    
+    # Escándalo alto = riesgo de despido
+    if estado.get("nivel_escandalo", 0) > 70 and random.random() < 0.20:
+        estado["trabajo_actual"] = "Desempleado"
+        estado["turnos_en_trabajo"] = 0
+        estado["ingreso_mensual"] = 0
+        return "🚨 **¡TE DESPIDIERON!** Tu nivel de escándalo era demasiado alto para la empresa. Ahora estás desempleado."
+    
+    # Aprobación muy baja = riesgo de despido (para cargos públicos/políticos)
+    if trabajo_actual in ["Asesor Político"] and estado.get("aprobacion_publica", 50) < 20 and random.random() < 0.10:
+        estado["trabajo_actual"] = "Desempleado"
+        estado["turnos_en_trabajo"] = 0
+        estado["ingreso_mensual"] = 0
+        return "📉 **Te despidieron.** Tu baja aprobación pública hizo que perdieras tu puesto como Asesor Político."
+    
+    return None
+
+# ==============================================================================
 # LÓGICA DE ECONOMÍA Y TURNO (PASIVO)
 # ==============================================================================
 
@@ -78,6 +283,10 @@ def procesar_economia(estado: Dict[str, Any]) -> str:
     estado["ingreso_mensual"] = sueldo_final
     if sueldo_final > 0:
         resumen.append(f"💼 Sueldo ({trabajo}): +${sueldo_final:,}")
+    
+    # Incrementar experiencia en el trabajo
+    if trabajo != "Desempleado":
+        estado["turnos_en_trabajo"] = estado.get("turnos_en_trabajo", 0) + 1
         
     corporaciones = estado.get("corporaciones", {})
     dividendos_totales = 0
@@ -98,6 +307,11 @@ def procesar_economia(estado: Dict[str, Any]) -> str:
         resumen.append(f"🏢 Dividendos de empresas: +${dividendos_totales:,}")
         
     estado["edad"] = estado.get("edad", 24) + 0.083
+    
+    # Verificar despido
+    msg_despido = verificar_despido(estado)
+    if msg_despido:
+        resumen.append(f"\n⚠️ {msg_despido}")
     
     # Actualizar historial para gráficos
     estado.setdefault("historial_patrimonio", []).append(estado.get("dinero_personal", 0))
@@ -140,7 +354,7 @@ def intentar_fundar_empresa(estado: Dict[str, Any], tipo_empresa: str) -> Tuple[
     return True, f"🏢 **ÉXITO:** Fundaste {nueva_empresa.nombre}. Generará ${requisitos['dividendo_base']:,} base/mes."
 
 def intentar_estudiar(estado: Dict[str, Any], enfoque: str) -> Tuple[bool, str]:
-    """El jugador estudia para subir una habilidad específica. (Sin costo de energía)"""
+    """El jugador estudia para subir una habilidad específica."""
     ganancia_base = random.randint(2, 5)
     
     if enfoque == "tecnica":
@@ -437,7 +651,8 @@ LOGROS_DEFINICIONES = [
     {"id": "empresa_nivel_3", "nombre": "Empresario", "desc": "Tener una empresa en Nivel 3", "check": lambda e: any(emp.nivel >= 3 for emp in e.get("corporaciones", {}).values() if hasattr(emp, 'nivel'))},
     {"id": "aprobacion_alta", "nombre": "Amado por el Pueblo", "desc": "Alcanzar 90% de Aprobación", "check": lambda e: e.get("aprobacion_publica", 0) >= 90},
     {"id": "sobreviviente", "nombre": "Sobreviviente", "desc": "Sobrevivir a un Juicio Político", "check": lambda e: e.get("juicio_politico_sobrevivido", False)},
-    {"id": "dinastia_larga", "nombre": "Legado Eterno", "desc": "Llegar a la Generación 3", "check": lambda e: e.get("generacion_actual", 1) >= 3}
+    {"id": "dinastia_larga", "nombre": "Legado Eterno", "desc": "Llegar a la Generación 3", "check": lambda e: e.get("generacion_actual", 1) >= 3},
+    {"id": "ceo", "nombre": "Titán Corporativo", "desc": "Alcanzar el puesto de CEO", "check": lambda e: e.get("trabajo_actual") == "CEO"}
 ]
 
 def verificar_logros(estado: Dict[str, Any]) -> List[str]:
@@ -502,7 +717,7 @@ def verificar_objetivos_dinasticos(estado: Dict[str, Any]) -> List[str]:
     return mensajes
 
 # ==============================================================================
-# ROUTER DE ACCIONES DETERMINISTAS (FIX: Detecta "fundar consultora" sin "empresa")
+# ROUTER DE ACCIONES DETERMINISTAS (ACTUALIZADO CON SISTEMA LABORAL)
 # ==============================================================================
 
 def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bool, str]:
@@ -511,7 +726,28 @@ def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bo
     
     logger.info(f"Procesando acción: '{t}'")
     
-    # 1. Detectar fundación de empresas (con o sin la palabra "empresa")
+    # 1. ACCIONES LABORALES (NUEVO)
+    if "renunciar" in t or "dejar trabajo" in t or "dejar el trabajo" in t:
+        return intentar_renunciar(estado)
+
+    if "pedir ascenso" in t or "ascender" in t or "promoción" in t or "promocion" in t:
+        return intentar_pedir_ascenso(estado)
+
+    if "buscar trabajo" in t or "conseguir trabajo" in t or "buscar empleo" in t:
+        # Si menciona un cargo específico, pasarlo
+        tipo = None
+        for cargo in REQUISITOS_TRABAJO.keys():
+            if cargo.lower() in t:
+                tipo = cargo
+                break
+        return intentar_buscar_trabajo(estado, tipo)
+
+    if "postularme" in t or "postular" in t or "aplicar" in t:
+        for cargo in REQUISITOS_TRABAJO.keys():
+            if cargo.lower() in t:
+                return postularse_a_trabajo(estado, cargo)
+
+    # 2. Detectar fundación de empresas
     if "fundar" in t or "crear" in t or "abrir" in t:
         tipo = None
         
@@ -524,14 +760,14 @@ def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bo
         elif "banco" in t or "financiera" in t or "banca" in t:
             tipo = "Banco"
         elif "empresa" in t or "negocio" in t or "compañía" in t or "compania" in t:
-            tipo = "Consultora"  # Default si dice "fundar empresa" a secas
+            tipo = "Consultora"  # Default
             
         if tipo:
             logger.info(f"Intentando fundar empresa tipo: {tipo}")
             ok, msg = intentar_fundar_empresa(estado, tipo)
             return ok, msg
 
-    # 2. Detectar estudiar
+    # 3. Detectar estudiar
     if "estudiar" in t or "capacitarse" in t or "aprender" in t or "curso" in t:
         enfoque = "tecnica"
         if "politica" in t or "oratoria" in t or "política" in t: 
@@ -542,12 +778,12 @@ def ejecutar_accion_determinista(estado: Dict[str, Any], texto: str) -> Tuple[bo
         ok, msg = intentar_estudiar(estado, enfoque)
         return ok, msg
 
-    # 3. Detectar mejorar vivienda
+    # 4. Detectar mejorar vivienda
     if "mudar" in t or "mejorar vivienda" in t or "comprar casa" in t or "mudarse" in t:
         ok, msg = intentar_mejorar_vivienda(estado)
         return ok, msg
 
-    # 4. Detectar interacción con prensa
+    # 5. Detectar interacción con prensa
     if "pauta" in t or "entrevista" in t or "publicidad" in t:
         medio_nombre = None
         for m in estado.get("medios", []):
